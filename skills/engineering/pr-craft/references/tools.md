@@ -1,7 +1,7 @@
 # Tools
 
 Each tool below produces one part of the body. Reach for the one the change
-earns; none of them are mandatory.
+earns. None of them are mandatory.
 
 ## `gh` — open and edit the PR
 
@@ -74,8 +74,8 @@ Put it in the links row, directly under the opening paragraph:
 [Fast diff](https://diffshub.com/OWNER/REPO/pull/123) · Closes #482
 ```
 
-It works on public repositories. Skip it on a private repo — a dead link costs
-more than a missing one.
+It works on public repositories. On a private repo the link 404s for every
+reviewer, so leave it out.
 
 Generate it from the PR number:
 
@@ -130,4 +130,4 @@ Call the Skill tool with `gh-stack` for the workflow.
 | changes anything a person sees | screenshots — [visuals.md](visuals.md) |
 | claims to be faster | `hyperfine`, or the repo's benchmark, with two numbers |
 | is hard to follow in file order | a **Reviewing this** section, chaptered |
-| is a one-line fix | none of them; the body is three sentences |
+| is a one-line fix | none of them. The body is three sentences |

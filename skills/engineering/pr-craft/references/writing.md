@@ -2,8 +2,9 @@
 
 Two demands pull against each other. The body must be unambiguous to a tired
 reviewer who is not a native English speaker, and it must read like a person
-wrote it. Simplified Technical English gives the first. Zinsser's fourth
-quality — humanity — keeps the second.
+wrote it. Simplified Technical English handles the ambiguity.
+Zinsser's fourth quality, humanity, is what stops the result reading like a
+form.
 
 For the full rule set, call the Skill tool with `simple-english` and use
 **pragmatic** mode: domain vocabulary stays, structure tightens.
@@ -17,8 +18,9 @@ Every STE rule depends on this split, and a PR body contains both kinds.
 | Opening, Problem, Change, Risks | Descriptive | Simple present or past | 25 words per sentence |
 | Verifying, Reviewing this | Procedural | Imperative | 20 words per sentence |
 
-Descriptive text explains; it never orders. Procedural text orders; it never
-explains. Mixing them inside one section is what makes a body feel muddy.
+Keep instructions out of a descriptive section, and keep explanation out of a
+procedural one. A section that does both is what makes a body feel muddy: the
+reviewer cannot tell which lines they are meant to run.
 
 ## Tense
 
@@ -33,7 +35,7 @@ explains. Mixing them inside one section is what makes a body feel muddy.
 
 ## Modals
 
-Three are allowed: **can**, **will**, **must**. The rest hedge.
+Three are allowed: **can**, **will**, and **must**. Every other modal hedges.
 
 | You wrote | Write |
 |---|---|
@@ -67,9 +69,9 @@ Pick one and hold it for the whole body:
 - run / execute / invoke → pick one
 - limit / cap / threshold / budget → pick one
 
-Synonym rotation reads as variety to the writer and as three different things
-to the reader. In a PR body it is worse than usual: a reviewer who thinks
-`limit` and `threshold` are two mechanisms will look for the second one.
+Synonym rotation looks like variety while you write it. A reader takes each new
+word as a new thing, so a reviewer who reads `limit` in one section and
+`threshold` in the next will go looking for the second mechanism.
 
 ## Cut
 
@@ -106,7 +108,7 @@ These read as machine-written whatever the words are:
 
 ## Sounding human
 
-STE removes ambiguity; it does not require sounding like a machine. What keeps
+STE removes ambiguity without requiring you to sound like a machine. What keeps
 a body human:
 
 - **Say the awkward thing plainly.** "I could not reproduce the original report

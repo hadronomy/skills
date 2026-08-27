@@ -83,8 +83,8 @@ full-size and stacks them, which defeats the comparison.
 </details>
 ```
 
-Keep the primary before-and-after pair **outside** any `<details>`. A collapsed
-comparison is a comparison nobody opens.
+Keep the primary before-and-after pair **outside** any `<details>`. Most
+reviewers never expand a collapsed section, so the main comparison goes unseen.
 
 Always write `alt` text. It is what a screen-reader user gets, and what
 everyone gets when the image fails to load.
@@ -110,6 +110,6 @@ history permanently to serve one review.
 - Nothing a person sees changed.
 - The change is internal and the output is identical by design — say that in
   one sentence instead.
-- You cannot capture it honestly. Say "I could not capture this; here is how to
-  reproduce it locally" and give the steps. Never stage an approximation and
+- You cannot capture it honestly. Say that you could not capture it, then give
+  the steps to reproduce it locally. Never stage an approximation and
   present it as the real thing.

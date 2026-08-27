@@ -13,7 +13,7 @@
   on what performant PR review could look like.
 - **Codiff** — <https://github.com/nkzw-tech/codiff>, by Christoph Nakazawa.
   `brew install --cask nkzw-tech/tap/codiff`. Flow-based walkthroughs with
-  chapters; the source of the **Reviewing this** section's argument.
+  chapters, which is where the **Reviewing this** section comes from.
   [Post](https://x.com/cnakazawa/status/2063812273962189089).
 - **gh-image** — <https://github.com/drogers0/gh-image>. Uploads to
   `github.com/user-attachments/` from the terminal.
@@ -46,4 +46,4 @@ Re-check before relying on these:
 - Whether `gh` has gained native image upload. It could not as of this writing,
   and the maintainers had no plans to add it.
 - DiffsHub's coverage of private repositories.
-- calldiff's language list. Its 0.5.0 binary reports 22; the README says 23.
+- calldiff's language list. Its 0.5.0 binary reports 22 and the README says 23.

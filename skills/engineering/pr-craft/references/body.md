@@ -24,15 +24,16 @@ reviewer who already has the diff open.
 ## The opening paragraph
 
 No heading. One to three sentences, before anything else. What changed, and
-why. This is the part that gets read; assume it is the only part.
+why. Assume this is the only part a reviewer reads.
 
 > Uploads larger than the configured limit were accepted, buffered fully in
 > memory, and then rejected by the storage layer. A 2 GB upload could take the
 > process down. The size check now runs on the request stream, before any
 > buffering.
 
-That paragraph alone lets a reviewer decide whether they are the right
-reviewer. Nothing below it is a substitute.
+That paragraph alone lets a reviewer decide whether they are the right reviewer.
+No later section does that job, because a reviewer who stops reading never
+reaches them.
 
 ## The links row
 
@@ -68,8 +69,8 @@ Where a linked issue already tells this story, one sentence and the link is
 enough. Do not restate the issue in full. Where there is no issue, this section
 carries the whole justification and is worth real length.
 
-Rule of thumb: a reviewer who disagrees with this section will disagree with
-the whole PR. Get it right and the rest is detail.
+A reviewer who disagrees with this section will disagree with the whole PR, so
+it is worth more of your time than any other section.
 
 ## The change
 
@@ -102,8 +103,9 @@ belongs in a conversation, not a PR body.
 ## Call stack
 
 When the change alters *which code runs*, show the call path before and after.
-A code diff shows text; a call-stack diff shows behaviour, and it catches the
-class of bug where the diff looks harmless and the runtime path moved.
+A code diff shows changed text. A call-stack diff shows changed behaviour, which
+catches the class of bug where the text looks harmless and the runtime path
+moved.
 
 Generate it with `calldiff` (see [tools.md](tools.md)) and paste it as a fenced
 `diff` block so the `-` and `+` lines colour correctly:
@@ -136,8 +138,8 @@ what they read now and what they will read after.
 
 ## Verifying
 
-Commands the reviewer can paste. "Tested locally" tells them nothing and reads
-as a claim you did not want examined.
+Commands the reviewer can paste. "Tested locally" tells them nothing, and it
+gives them no way to check the claim themselves.
 
 ```bash
 cargo nextest run -p upload
@@ -154,7 +156,7 @@ is the proof the bug is real and the fix works.
 
 ## Risks and limits
 
-The section that earns trust. It holds:
+The section a reviewer trusts you for. It holds:
 
 - What could break, and the blast radius.
 - What you knowingly left undone, and why.
@@ -171,8 +173,8 @@ feels.
 
 ## Reviewing this
 
-Where to start, and in what order. Big diffs get abandoned because the reviewer
-cannot find the thread; three lines here fixes that.
+Where to start, and in what order. A reviewer who cannot find the thread through
+a large diff usually abandons it, and three lines here prevent that.
 
 > Start with `limit.go` — it is the whole idea. Then `upload.go:88` for the
 > call-site change. The test file and the generated fixtures are mechanical.

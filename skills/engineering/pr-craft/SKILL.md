@@ -5,8 +5,8 @@ description: Write pull requests a reviewer can act on. Use when opening, rewrit
 
 # PR Craft
 
-A pull request body has one job: let a reviewer decide, quickly and correctly,
-whether this change should land. Everything below serves that.
+A pull request body exists to let a reviewer decide, quickly and correctly,
+whether this change should land.
 
 The reviewer arrives with seven questions, in this order. The body answers them
 in the same order:
@@ -46,7 +46,8 @@ in the same order:
    did not run, no test result you did not see.
 10. **Follow the repo's AI-disclosure policy.** Some projects require a
     disclosure and close PRs that omit it. Others forbid agent attribution
-    entirely. Check before you write; the repo decides, not habit.
+    entirely. Read the repo's policy before you write, and follow it over any
+    habit of your own.
 11. **Re-read the body against the final diff** before you open or update the
     PR. Descriptions go stale during review.
 
@@ -129,7 +130,8 @@ gh pr create --title "..." --body-file pr-body.md --draft
 ```
 
 Open as a draft, read the rendered body on GitHub, fix what reads badly, then
-mark it ready. The rendered body is the real artifact; the markdown is not.
+mark it ready. Reviewers read the rendered body, so that is the version to
+judge.
 
 Done when the rendered body answers all seven questions and the fast-diff link
 resolves.
