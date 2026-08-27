@@ -1,0 +1,22 @@
+{
+  "name": "hadronomy-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pablo Hernández's agent skills",
+  "repository": { "type": "git", "url": "https://github.com/hadronomy/skills" },
+  "license": "MIT",
+  "scripts": {
+    "link": "bash scripts/link-skills.sh",
+    "list": "bash scripts/list-skills.sh",
+    "validate": "node scripts/validate-skills.mjs",
+    "restore": "node scripts/restore-global-skills.mjs",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-plugin-version.mjs",
+    "check-plugin-version": "node scripts/sync-plugin-version.mjs --check"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.30.0"
+  },
+  "packageManager": "npm@10.9.4"
+}

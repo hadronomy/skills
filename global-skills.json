@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "agents": [
+    "claude-code",
+    "codex",
+    "opencode"
+  ],
+  "sources": {
+    "AminBlg/SimpleEnglish": {
+      "sourceUrl": "https://github.com/AminBlg/SimpleEnglish.git",
+      "skills": [
+        "simple-english"
+      ]
+    },
+    "davis7dotsh/better-context": {
+      "sourceUrl": "https://github.com/davis7dotsh/better-context.git",
+      "skills": [
+        "btca-cli"
+      ]
+    },
+    "dmmulroy/anti-slop": {
+      "sourceUrl": "https://github.com/dmmulroy/anti-slop.git",
+      "skills": [
+        "install-anti-slop"
+      ]
+    },
+    "emilkowalski/skill": {
+      "sourceUrl": "https://github.com/emilkowalski/skill.git",
+      "skills": [
+        "emil-design-eng",
+        "review-animations"
+      ]
+    },
+    "github/gh-stack": {
+      "sourceUrl": "https://github.com/github/gh-stack.git",
+      "skills": [
+        "gh-stack"
+      ]
+    },
+    "Jakubantalik/transitions.dev": {
+      "sourceUrl": "https://github.com/Jakubantalik/transitions.dev.git",
+      "skills": [
+        "transitions-dev"
+      ]
+    },
+    "jal-co/shieldcn": {
+      "sourceUrl": "https://github.com/jal-co/shieldcn.git",
+      "skills": [
+        "shieldcn-badges"
+      ]
+    },
+    "kitlangton/skills": {
+      "sourceUrl": "https://github.com/kitlangton/skills.git",
+      "skills": [
+        "effect"
+      ]
+    },
+    "lassejlv/skills": {
+      "sourceUrl": "https://github.com/lassejlv/skills.git",
+      "skills": [
+        "build-gpui-apps",
+        "paper-to-gpui"
+      ]
+    },
+    "makisuo/skills": {
+      "sourceUrl": "https://github.com/makisuo/skills.git",
+      "skills": [
+        "effect-best-practices"
+      ]
+    },
+    "mattpocock/skills": {
+      "sourceUrl": "https://github.com/mattpocock/skills.git",
+      "skills": [
+        "ask-matt",
+        "batch-grill-me",
+        "claude-handoff",
+        "code-review",
+        "codebase-design",
+        "design-an-interface",
+        "diagnosing-bugs",
+        "domain-modeling",
+        "edit-article",
+        "git-guardrails-claude-code",
+        "grill-me",
+        "grill-with-docs",
+        "grilling",
+        "handoff",
+        "implement",
+        "improve-codebase-architecture",
+        "loop-me",
+        "migrate-to-shoehorn",
+        "obsidian-vault",
+        "prototype",
+        "qa",
+        "request-refactor-plan",
+        "research",
+        "resolving-merge-conflicts",
+        "scaffold-exercises",
+        "setup-matt-pocock-skills",
+        "setup-pre-commit",
+        "setup-ts-deep-modules",
+        "tdd",
+        "teach",
+        "to-questionnaire",
+        "to-spec",
+        "to-tickets",
+        "triage",
+        "ubiquitous-language",
+        "wait-what",
+        "wayfinder",
+        "wizard",
+        "writing-beats",
+        "writing-for-agents",
+        "writing-fragments",
+        "writing-great-skills",
+        "writing-shape"
+      ]
+    },
+    "msmps/opentui-skill": {
+      "sourceUrl": "https://github.com/msmps/opentui-skill.git",
+      "skills": [
+        "opentui"
+      ]
+    },
+    "vercel-labs/agent-browser": {
+      "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
+      "skills": [
+        "agent-browser"
+      ]
+    },
+    "vercel-labs/opensrc": {
+      "sourceUrl": "https://github.com/vercel-labs/opensrc.git",
+      "skills": [
+        "opensrc"
+      ]
+    },
+    "vercel-labs/skills": {
+      "sourceUrl": "https://github.com/vercel-labs/skills.git",
+      "skills": [
+        "find-skills"
+      ]
+    }
+  }
+}

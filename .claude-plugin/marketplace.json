@@ -1,0 +1,14 @@
+{
+  "name": "hadronomy",
+  "owner": { "name": "Pablo Hernández", "url": "https://github.com/hadronomy" },
+  "description": "Pablo Hernández's agent skills, as an installable Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "hadronomy-skills",
+      "source": "./",
+      "description": "Agent skills for production engineering: Rust craft, and more to come.",
+      "category": "engineering",
+      "keywords": ["rust", "engineering", "skills"]
+    }
+  ]
+}

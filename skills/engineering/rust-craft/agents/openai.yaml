@@ -1,0 +1,3 @@
+interface:
+  display_name: "Rust Craft"
+  short_description: "Production Rust: design, performance, and release discipline"
