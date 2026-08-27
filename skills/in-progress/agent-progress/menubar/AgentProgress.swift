@@ -113,7 +113,23 @@ final class CapsuleView: MTKView {
 
     private func wake() { idleSince = nil; isPaused = false }
 
+    /// Capsule height as a share of the item height, clamped so it stays a bar
+    /// rather than a sliver or a slab on an unusual menu bar.
+    private var barHeight: CGFloat { min(10, max(4, (bounds.height * 0.27).rounded())) }
+    /// Horizontal padding, tied to the same measure so the shape stays in
+    /// proportion at any size.
+    private var inset: CGFloat { min(14, max(4, (bounds.height * 0.36).rounded())) }
+
     override func draw(_ dirty: NSRect) {
+        // Match the host button here rather than trusting a notification.
+        // The item's height settles a few frames after it first appears, and
+        // anything that reacts later draws the capsule centred against a box
+        // that is about to change -- which is visible as the bar starting high
+        // and dropping into place.
+        if let host = superview, frame != host.bounds { frame = host.bounds }
+
+        // Until the size is real, drawing would centre against a placeholder.
+        guard bounds.height >= 8, bounds.width >= 12 else { return }
         guard let pipeline, let queue,
               let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable,
@@ -144,8 +160,8 @@ final class CapsuleView: MTKView {
             track: vec(trackNS, alpha: 0.35),
             indeterminate: target == nil ? 1 : 0,
             scale: Float(window?.backingScaleFactor ?? 2),
-            inset: 8,
-            barHeight: 6
+            inset: Float(inset),
+            barHeight: Float(barHeight)
         )
         enc.setRenderPipelineState(pipeline)
         enc.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
@@ -240,6 +256,15 @@ struct PanelView: View {
         // status bar's own thickness.
         capsule.autoresizingMask = [.width, .height]
         button.addSubview(capsule)
+        // The item resizes when a run starts and when the menu bar changes.
+        // Without this the capsule keeps a stale size until the next poll,
+        // which shows as the bar jumping into place a second after it appears.
+        button.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: button, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.layoutCapsule() }
+        }
         layoutCapsule()
 
         popover = NSPopover()
@@ -266,11 +291,11 @@ struct PanelView: View {
 
     private func layoutCapsule() {
         guard let button = item.button else { return }
-        // Cover the whole item. The shader insets and centres the capsule, so
-        // there is no subview geometry left for AppKit to override.
-        let h = max(button.bounds.height, NSStatusBar.system.thickness)
-        let w = max(button.bounds.width, item.length)
-        capsule.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        // Mirror the button exactly. The shader derives the capsule from this
+        // view's own size, so whatever height the menu bar happens to be, the
+        // bar lands in its middle. Never substitute a guessed height here: a
+        // wrong one centres the capsule against the wrong box.
+        capsule.frame = button.bounds
     }
 
     private func refresh() {
