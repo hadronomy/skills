@@ -51,7 +51,7 @@ and OpenCode.
 
 | Surface | How |
 |---|---|
-| macOS menu bar | `menubar/build.sh`, then launch `~/Applications/AgentProgress.app`. Metal capsule, eased, SwiftUI dropdown. Works in every harness including UI builds. |
+| macOS menu bar | `menubar/build.sh`, then `menubar/install-launchagent.sh` to keep it running across logins. Metal capsule, eased, SwiftUI dropdown. Works in every harness including UI builds. |
 | Claude Code status line | `statusLine` in `settings.json` calling a script that runs `agent-progress list`, with `refreshInterval: 1`. |
 | Any terminal | The runner re-emits OSC 9;4 to `/dev/tty` when one exists. |
 | Anywhere | `agent-progress watch` in a second pane. |
@@ -64,6 +64,29 @@ has no status-line hook at all
 
 A UI harness has no controlling terminal, so `/dev/tty` is absent and OSC
 reaches nothing. Measured, not assumed: the whole process chain reports no tty.
+
+## The menu bar renderer
+
+```bash
+menubar/build.sh                 # -> ~/Applications/AgentProgress.app
+menubar/install-launchagent.sh   # start it at login, restart it on a crash
+```
+
+`KeepAlive` is conditional on `SuccessfulExit=false`, so a crash restarts the
+app but choosing Quit from its menu leaves it stopped until the next login. An
+unconditional `KeepAlive` would make Quit appear broken.
+
+Remove it with:
+
+```bash
+launchctl bootout gui/$UID/dev.hadronomy.agent-progress
+rm ~/Library/LaunchAgents/dev.hadronomy.agent-progress.plist
+```
+
+The capsule derives its height, inset, and centre from the status item's own
+size at draw time, so it sits correctly whatever height the menu bar is. Do not
+reintroduce `NSStatusBar.thickness` into the render path: it reports the item,
+not the bar, and the two differ by a lot on a notched display.
 
 ## Rules
 
