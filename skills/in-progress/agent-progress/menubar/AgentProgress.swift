@@ -66,6 +66,8 @@ private struct Uniforms {
     var track: SIMD4<Float>
     var indeterminate: Float
     var scale: Float
+    var inset: Float
+    var barHeight: Float
 }
 
 final class CapsuleView: MTKView {
@@ -139,9 +141,11 @@ final class CapsuleView: MTKView {
             progress: Float(max(0, min(1, shown))),
             time: Float(CACurrentMediaTime() - start),
             accent: vec(accentNS, alpha: 1.0),
-            track: vec(trackNS, alpha: 0.28),
+            track: vec(trackNS, alpha: 0.35),
             indeterminate: target == nil ? 1 : 0,
-            scale: Float(window?.backingScaleFactor ?? 2)
+            scale: Float(window?.backingScaleFactor ?? 2),
+            inset: 8,
+            barHeight: 6
         )
         enc.setRenderPipelineState(pipeline)
         enc.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
@@ -234,7 +238,7 @@ struct PanelView: View {
         // has no useful bounds when constraints activate, so the view lands in
         // the top-left corner. Position it explicitly instead, against the
         // status bar's own thickness.
-        capsule.autoresizingMask = []
+        capsule.autoresizingMask = [.width, .height]
         button.addSubview(capsule)
         layoutCapsule()
 
@@ -262,13 +266,11 @@ struct PanelView: View {
 
     private func layoutCapsule() {
         guard let button = item.button else { return }
-        let h = NSStatusBar.system.thickness            // menu bar height in points
-        let width = max(button.bounds.width, item.length)
-        let w: CGFloat = max(12, width - 16)
-        let barH: CGFloat = 6
-        capsule.frame = NSRect(x: ((width - w) / 2).rounded(),
-                               y: ((h - barH) / 2).rounded(),
-                               width: w, height: barH)
+        // Cover the whole item. The shader insets and centres the capsule, so
+        // there is no subview geometry left for AppKit to override.
+        let h = max(button.bounds.height, NSStatusBar.system.thickness)
+        let w = max(button.bounds.width, item.length)
+        capsule.frame = NSRect(x: 0, y: 0, width: w, height: h)
     }
 
     private func refresh() {

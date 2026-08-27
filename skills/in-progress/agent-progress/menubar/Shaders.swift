@@ -25,6 +25,8 @@ struct Uniforms {
     float4 track;
     float  indeterminate;
     float  scale;       // backing scale, so the SDF stays crisp on any display
+    float  inset;       // horizontal padding inside the status item
+    float  barHeight;   // capsule height, in points
 };
 
 // Signed distance to a rounded box, in pixels.
@@ -34,12 +36,18 @@ float sdRoundedBox(float2 p, float2 halfSize, float r) {
 }
 
 fragment float4 f_main(VOut in [[stage_in]], constant Uniforms& u [[buffer(0)]]) {
-    float2 px = in.uv * u.size;
-    float2 c  = px - u.size * 0.5;
-    float  h  = u.size.y * 0.5;
+    // u.size is the whole status item. Carve the capsule out of its middle so
+    // the bar's placement is decided here, not by AppKit subview layout.
+    float2 view = in.uv * u.size;
+    float2 barSize = float2(u.size.x - u.inset * 2.0, u.barHeight);
+    float2 origin  = float2(u.inset, (u.size.y - u.barHeight) * 0.5);
+    float2 px = view - origin;
+
+    float2 c  = px - barSize * 0.5;
+    float  h  = barSize.y * 0.5;
     float  r  = h;                                   // full capsule
 
-    float d = sdRoundedBox(c, u.size * 0.5, r);
+    float d = sdRoundedBox(c, barSize * 0.5, r);
     // Antialias over one pixel of the backing store, not one point.
     float aa = 1.0 / u.scale;
     float shape = 1.0 - smoothstep(-aa, aa, d);
@@ -50,23 +58,23 @@ fragment float4 f_main(VOut in [[stage_in]], constant Uniforms& u [[buffer(0)]])
     if (u.indeterminate > 0.5) {
         // A soft pill travelling the length of the track.
         float head = fract(u.time * 0.55);
-        float x = in.uv.x;
+        float x = px.x / barSize.x;
         float band = exp(-pow((x - head) * 3.2, 2.0) * 6.0)
                    + exp(-pow((x - head + 1.0) * 3.2, 2.0) * 6.0);
         col = mix(u.track, u.accent, clamp(band, 0.0, 1.0) * 0.9);
     } else {
-        float edge = u.progress * u.size.x;
+        float edge = u.progress * barSize.x;
         float fill = 1.0 - smoothstep(edge - aa, edge + aa, px.x);
         float4 base = u.accent;
 
         // Vertical shading: a touch lighter at the top, so the capsule reads as
         // a physical object rather than a flat rectangle.
-        float vgrad = mix(1.08, 0.92, in.uv.y);
+        float vgrad = mix(1.08, 0.92, clamp(px.y / barSize.y, 0.0, 1.0));
         base.rgb *= vgrad;
 
         // Sheen: one narrow highlight drifting through the filled region.
         float sheenPos = fract(u.time * 0.28);
-        float sheen = exp(-pow((in.uv.x - sheenPos) * 9.0, 2.0));
+        float sheen = exp(-pow((px.x / barSize.x - sheenPos) * 9.0, 2.0));
         base.rgb += sheen * 0.18 * fill;
 
         // Leading edge catches a little more light.
@@ -76,6 +84,9 @@ fragment float4 f_main(VOut in [[stage_in]], constant Uniforms& u [[buffer(0)]])
         col = mix(u.track, base, fill);
     }
 
-    return float4(col.rgb, col.a) * shape;
+    // The pipeline blends with .one / .oneMinusSourceAlpha, so colour has to
+    // leave here premultiplied. Returning straight rgb made the 35%-alpha
+    // track paint as solid white.
+    return float4(col.rgb * col.a, col.a) * shape;
 }
 """
