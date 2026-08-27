@@ -33,6 +33,13 @@ you own. Both at once leaves every skill present twice.
   layout, API design, errors, performance, async, CLI, testing, crate choice,
   release. [Docs](docs/engineering/rust-craft.md)
 
+### In progress
+
+Not promoted: no plugin entry, no docs page, and not recommended yet.
+
+- [`windows-mcp`](skills/in-progress/windows-mcp) — driving the Windows desktop
+  on `workstation` through the windows MCP server.
+
 ## Restoring a machine
 
 The `skills` CLI cannot restore globally-installed skills; only project-scope
