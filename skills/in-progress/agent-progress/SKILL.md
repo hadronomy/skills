@@ -51,7 +51,7 @@ and OpenCode.
 
 | Surface | How |
 |---|---|
-| macOS menu bar | `menubar/build.sh`, then `menubar/install-launchagent.sh` to keep it running across logins. Metal capsule, eased, SwiftUI dropdown. Works in every harness including UI builds. |
+| macOS menu bar | `brew install hadronomy/tap/agent-progress`. Metal capsule, eased, SwiftUI dropdown. Works in every harness including UI builds. |
 | Claude Code status line | `statusLine` in `settings.json` calling a script that runs `agent-progress list`, with `refreshInterval: 1`. |
 | Any terminal | The runner re-emits OSC 9;4 to `/dev/tty` when one exists. |
 | Anywhere | `agent-progress watch` in a second pane. |
@@ -68,25 +68,33 @@ reaches nothing. Measured, not assumed: the whole process chain reports no tty.
 ## The menu bar renderer
 
 ```bash
-menubar/build.sh                 # -> ~/Applications/AgentProgress.app
-menubar/install-launchagent.sh   # start it at login, restart it on a crash
+brew tap hadronomy/tap
+brew trust hadronomy/tap          # Homebrew 6 gates third-party taps
+brew install agent-progress
+brew services start agent-progress
 ```
 
-`KeepAlive` is conditional on `SuccessfulExit=false`, so a crash restarts the
-app but choosing Quit from its menu leaves it stopped until the next login. An
-unconditional `KeepAlive` would make Quit appear broken.
+`brew services` owns the login item, so there is no plist to hand-write and no
+`launchctl` to invoke. Stop it with `brew services stop agent-progress`.
 
-Remove it with:
+The formula builds from source, which is the whole distribution argument: a
+locally compiled binary never gets a `com.apple.quarantine` xattr, so Gatekeeper
+has nothing to block and the app needs no Developer ID and no notarization.
+Homebrew casks now require both, and unsigned ones leave the official tap in
+September 2026. Building from source sidesteps that entirely, at the cost of
+requiring the Xcode command line tools.
 
-```bash
-launchctl bootout gui/$UID/dev.hadronomy.agent-progress
-rm ~/Library/LaunchAgents/dev.hadronomy.agent-progress.plist
-```
+Without Homebrew, `menubar/build.sh [path]` produces the same bundle anywhere.
 
-The capsule derives its height, inset, and centre from the status item's own
-size at draw time, so it sits correctly whatever height the menu bar is. Do not
-reintroduce `NSStatusBar.thickness` into the render path: it reports the item,
-not the bar, and the two differ by a lot on a notched display.
+Two things the renderer depends on, neither obvious:
+
+- **It must be an `.app` bundle.** A bare executable runs and stays alive but
+  puts nothing in the menu bar, because `NSStatusItem` needs a bundle. The
+  bundle does not have to live in `/Applications`; a Homebrew prefix is fine.
+- **The capsule derives its height, inset, and centre from the status item's own
+  size at draw time**, so it sits correctly whatever height the menu bar is. Do
+  not reintroduce `NSStatusBar.thickness` into the render path: it reports the
+  item, not the bar, and the two differ by a lot on a notched display.
 
 ## Rules
 
