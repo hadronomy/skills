@@ -29,6 +29,9 @@ you own. Both at once leaves every skill present twice.
 
 **Model-invoked**
 
+- [`pr-craft`](skills/engineering/pr-craft) — write pull requests a reviewer can
+  act on: body structure, prose, call-stack diffs, before-and-after screenshots,
+  verification. [Docs](docs/engineering/pr-craft.md)
 - [`rust-craft`](skills/engineering/rust-craft) — production Rust: workspace
   layout, API design, errors, performance, async, CLI, testing, crate choice,
   release. [Docs](docs/engineering/rust-craft.md)

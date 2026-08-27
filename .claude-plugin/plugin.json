@@ -2,12 +2,22 @@
   "name": "hadronomy-skills",
   "version": "0.1.0",
   "description": "Agent skills for production engineering: Rust craft, and more to come.",
-  "author": { "name": "Pablo Hernández", "url": "https://github.com/hadronomy" },
+  "author": {
+    "name": "Pablo Hern\u00e1ndez",
+    "url": "https://github.com/hadronomy"
+  },
   "homepage": "https://github.com/hadronomy/skills",
   "repository": "https://github.com/hadronomy/skills",
   "license": "MIT",
-  "keywords": ["rust", "engineering", "skills", "performance", "api-design"],
+  "keywords": [
+    "rust",
+    "engineering",
+    "skills",
+    "performance",
+    "api-design"
+  ],
   "skills": [
+    "./skills/engineering/pr-craft",
     "./skills/engineering/rust-craft"
   ]
 }

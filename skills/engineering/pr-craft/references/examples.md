@@ -1,0 +1,197 @@
+# Worked bodies
+
+Four changes, four right lengths. The lesson across all of them: the body scales
+with the change, not with the template.
+
+## 1. A bug fix
+
+Title: `fix(upload): reject oversized uploads on the request stream`
+
+---
+
+Uploads larger than the configured limit were accepted, buffered fully in
+memory, and only then rejected by the storage layer. A 2 GB upload took the
+process down with an allocation panic. The size check now runs on the request
+stream, before any buffering.
+
+[Fast diff](https://diffshub.com/acme/api/pull/482) · Closes #476
+
+### The problem
+
+`Upload` read the whole body into a `[]byte` before it did anything else. The
+limit lived in `storage.Put`, three calls later:
+
+```
+panic: runtime error: makeslice: cap out of range
+  at internal/upload.buffer (upload.go:88)
+```
+
+Reproduced with any file above available memory. #476 has the original report.
+
+### The change
+
+`Upload` now takes an `io.Reader` and a byte budget, and returns `ErrTooLarge`
+as soon as the budget is exceeded. Nothing large is ever held in memory.
+
+```go
+func Upload(ctx context.Context, r io.Reader, budget int64) (Ref, error)
+```
+
+The check in `storage.Put` stays as a backstop. It is unreachable through the
+normal path now, but a future caller could bypass the stream.
+
+### Verifying
+
+```bash
+go test ./internal/upload/...
+curl -X POST --data-binary @3gb.bin localhost:8080/upload   # expect 413
+```
+
+`TestUpload_OverBudget` fails without the fix.
+
+Covered: over-limit, exactly-at-limit, and chunked uploads. Not covered:
+multipart uploads, which take a different path and are unchanged.
+
+### Risks and limits
+
+The error a client sees changed from 500 to 413. That is the correct code, and
+it is a visible API change for anyone who matched on 500.
+
+---
+
+## 2. A visual change
+
+Title: `fix(settings): stop the panel clipping its last row on short viewports`
+
+---
+
+The settings panel used a fixed height, so on viewports under 720 px the last
+row was cut off with no way to scroll to it. The panel now sizes to its content
+and scrolls internally.
+
+[Fast diff](https://diffshub.com/acme/web/pull/311) · Closes #298
+
+### Before / After
+
+Both at 1280×680, light theme, same account.
+
+| Before | After |
+|---|---|
+| <img src="https://github.com/user-attachments/assets/aaa" width="420" alt="Settings panel with the Danger Zone row cut off at the bottom edge"> | <img src="https://github.com/user-attachments/assets/bbb" width="420" alt="Settings panel scrolled to show the full Danger Zone row"> |
+
+<details>
+<summary>The other three breakpoints</summary>
+
+...
+
+</details>
+
+### The change
+
+`max-height` replaces `height`, and `overflow-y: auto` moves from the page to
+the panel. The header and footer stay pinned, so the scroll affects only the
+row list.
+
+### Verifying
+
+```bash
+pnpm dev
+```
+
+Open Settings at 1280×680 and confirm the Danger Zone row is reachable. Repeat
+at 1280×900 and confirm nothing scrolls.
+
+### Risks and limits
+
+The panel now scrolls independently, so a long list no longer scrolls the page
+behind it. That is the intent, and it is a behaviour change for anyone used to
+the old feel.
+
+---
+
+## 3. A refactor, with a call stack
+
+Title: `refactor(plugins): read prebuilt views from disk instead of compiling on list`
+
+---
+
+`PluginService.list` compiled every plugin view through esbuild on each call,
+which made listing plugins cost proportional to plugin count and CPU. Views are
+now compiled once at build time and read from `dist/`.
+
+[Fast diff](https://diffshub.com/acme/desktop/pull/1204)
+
+### The change
+
+```ts
+// apps/electron/src/shared/plugin.ts
+export type PluginBuildResult = {
+  built: string[];
+  errors: PluginLoadError[];
+};
+```
+
+`compilePluginView` moved out of the list path and into `plugin.build`. Listing
+now reads `compiledViews.source` from disk.
+
+### Call stack
+
+```diff
+  PluginService.list
+  └─ readPluginManifest
+-    └─ compilePluginView (esbuild write:false)
++    └─ readPluginViewDist
+        └─ compiledViews.source
+
++ halo plugin build
++ └─ plugin.build
++    └─ PluginService.build
++       └─ compilePluginView outfile dist/view.js
++          └─ list() remounts servers
+```
+
+Generated with `calldiff diff main HEAD --entry PluginService.list`.
+
+### Verifying
+
+```bash
+pnpm test --filter plugins
+halo plugin build && halo plugin list      # expect no esbuild in the trace
+```
+
+Listing 40 plugins: 2.4 s → 90 ms (`hyperfine`, 10 runs, warm cache).
+
+### Risks and limits
+
+Plugins must now be built before they list. `plugin.build` runs in the dev
+bootstrap and in CI, but anyone with a hand-made plugin directory will see it
+missing until they run the build once. The error names the fix.
+
+### Reviewing this
+
+Start with `PluginService.ts` — the split between `list` and `build` is the
+whole change. `compilePluginView` itself is unchanged, only moved. The fixture
+updates are mechanical.
+
+---
+
+## 4. A one-line fix
+
+Title: `fix(config): read MISE_DEBUG, not RUST_LOG`
+
+---
+
+The debug flag was documented as `MISE_DEBUG` and read as `RUST_LOG`, so it did
+nothing. Reads the documented variable now.
+
+Closes #91
+
+```bash
+MISE_DEBUG=1 mise ls    # expect debug output
+```
+
+---
+
+That is the whole body, and it is complete. It answers what, why, and how to
+check. A three-line change does not need seven headings, and adding them makes
+the PR look larger than it is.
