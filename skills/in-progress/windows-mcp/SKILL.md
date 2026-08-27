@@ -71,6 +71,67 @@ desktop, which no user-session process can see or drive. When a UAC prompt appea
 is blocked: tell the user and let them click it. Elevated apps cannot be driven from here
 either.
 
+## Long-running work, and showing progress
+
+`PowerShell` blocks and caps at 600 seconds, and it returns everything at the
+end. A cargo build hits that ceiling and gives no feedback until it does. Codex
+caps its tool calls at 300 seconds, which is tighter still.
+
+Do not reach for the MCP tool for this. The same machine answers plain SSH:
+
+```bash
+ssh windows-mcp 'powershell -NoProfile -EncodedCommand <base64>'
+```
+
+Output streams line by line as it is produced, with no timeout of its own, and
+it bypasses the desktop lease entirely because no UI is involved.
+
+**Encode the command.** Quoting does not survive the trip through this shell,
+sshd, cmd, and powershell — it silently collapses and the command runs wrong or
+not at all. Base64 of UTF-16LE has nothing to escape:
+
+```bash
+enc() { python3 -c 'import base64,sys;print(base64.b64encode(sys.stdin.read().encode("utf-16-le")).decode())'; }
+ssh windows-mcp "powershell -NoProfile -EncodedCommand $(enc < script.ps1)"
+```
+
+Set `$ProgressPreference = 'SilentlyContinue'` at the top of every script, or
+PowerShell writes CLIXML progress records onto stderr and they land in your
+output.
+
+**`Start-Process -RedirectStandardOutput` does not work here.** Launched from a
+non-interactive SSH session it returns a PID and writes a zero-byte file
+forever. Stream over the live connection instead.
+
+### Progress without context cost
+
+Every line a monitor emits is a conversation message. A build that reports 40
+times costs 40 messages. Route progress to the status line instead, which
+renders in the UI and never reaches the model:
+
+```bash
+scripts/run-progress.sh inari windows-mcp 'cd C:\Users\pablo\Repos\inari; cargo build'
+```
+
+Run it with the Bash tool's `run_in_background`. The pipeline overwrites one
+state file per run in `~/.claude/run-progress/`, the status line reads that file
+once a second, and the whole build costs exactly one completion notification.
+
+Cargo hides its progress bar when stdout is not a terminal, and draws it with
+carriage returns rather than newlines. `run-progress.sh` handles both: it sets
+`CARGO_TERM_PROGRESS_WHEN=always` and splits the stream on `\r`, which turns
+`Building [====>    ] 96/240: tokio` into a live bar.
+
+Requires `statusLine` in `settings.json` pointing at a script that reads
+`~/.claude/run-progress`, with `refreshInterval: 1`. `scripts/statusline-progress.sh`
+is that segment, and composes with an existing status line.
+
+The protocol-level answer is MCP progress notifications: the client sends a
+`progressToken` and the server emits `notifications/progress` against it. That
+needs changes in `windows-mcp-server` and a client that sends the token, and the
+documented fallback when either is missing is to skip silently. The status line
+needs neither.
+
 ## Blast radius
 
 `PowerShell`, `Registry`, `FileSystem`, `Process` and `App` have full system access with
