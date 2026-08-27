@@ -1,0 +1,3 @@
+interface:
+  display_name: "Agent Progress"
+  short_description: "Live progress for long tasks, without context cost"

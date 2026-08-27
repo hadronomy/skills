@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Run a long command, publish its progress where a UI can render it.
+
+The agent never sees the progress. Every update overwrites one small JSON file;
+renderers poll that file. The command's own exit status is the only thing that
+reaches the conversation.
+
+    agent-progress run <name> -- <command...>
+    agent-progress run build --remote windows-mcp -- cargo build
+    agent-progress list
+    agent-progress watch
+
+Progress is read from three sources, best first:
+
+  OSC 9;4     the ConEmu progress sequence, emitted by the tool itself.
+              Exact, structured, no parsing. Cargo, and a growing set of
+              others, emit it when they believe they are on a terminal.
+  patterns    a per-tool or generic match on the tool's rendered bar.
+  protocol    a line the command prints itself: `progress: 42/100 message`.
+
+Everything runs under a pseudo-terminal, because tools suppress their rich
+output (bar included, OSC included) when stdout is a pipe.
+"""
+from __future__ import annotations
+import argparse, errno, fcntl, json, os, pty, re, select, shlex, signal, struct
+import subprocess, sys, termios, time
+from pathlib import Path
+
+def state_dir() -> Path:
+    base = os.environ.get("AGENT_PROGRESS_DIR")
+    if base:
+        return Path(base)
+    xdg = os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")
+    return Path(xdg) / "agent-progress"
+
+# ---------------------------------------------------------------- extraction
+
+OSC_RE = re.compile(rb"\x1b\]9;4;([0-4]);?(\d*)(?:\x07|\x1b\\)")
+BAR_RE = re.compile(rb"\[[=>\s#.-]*\]\s+(\d+)\s*/\s*(\d+)(?::\s*([^\r\n]*))?")
+PCT_RE = re.compile(rb"(?<![\d.])(\d{1,3})%")
+PROTO_RE = re.compile(rb"progress:\s*(\d+)\s*/\s*(\d+)\s*(.*)")
+LABEL_RE = re.compile(rb"^\s*(Compiling|Building|Checking|Downloading|Installing|Running|Linking)\s+(\S+)", re.M)
+
+class Progress:
+    """Newest known state of one run."""
+    def __init__(self, name: str):
+        self.name, self.pct, self.detail = name, None, ""
+        self.status, self.started, self.dirty = "running", time.time(), True
+
+    def set(self, pct=None, detail=None, status=None):
+        if pct is not None:
+            pct = max(0, min(100, int(pct)))
+            if pct != self.pct: self.pct, self.dirty = pct, True
+        if detail is not None and detail != self.detail:
+            self.detail, self.dirty = detail[:60], True
+        if status is not None and status != self.status:
+            self.status, self.dirty = status, True
+
+    def as_dict(self):
+        return {"name": self.name, "percent": self.pct, "detail": self.detail,
+                "status": self.status, "started": self.started, "updated": time.time()}
+
+def feed(buf: bytes, p: Progress) -> None:
+    """Pull whatever progress signal this chunk carries. Best source wins."""
+    got_osc = False
+    for st, val in OSC_RE.findall(buf):
+        got_osc = True
+        state = int(st)
+        if state == 0:   p.set(status="running")             # cleared by the tool
+        elif state == 1: p.set(pct=int(val or 0))
+        elif state == 2: p.set(status="error")
+        elif state == 3: p.set(detail="working")             # indeterminate
+        elif state == 4: p.set(status="paused")
+    for done, total, msg in PROTO_RE.findall(buf):
+        t = int(total)
+        if t: p.set(pct=int(done) * 100 // t, detail=msg.decode("utf8", "replace").strip())
+    if not got_osc:
+        m = None
+        for m in BAR_RE.finditer(buf): pass                  # last match in the chunk
+        if m:
+            done, total = int(m.group(1)), int(m.group(2))
+            if total:
+                unit = (m.group(3) or b"").decode("utf8", "replace")
+                p.set(pct=done * 100 // total,
+                      detail=re.split(r"[,(]", unit)[0].strip())
+        else:
+            hits = PCT_RE.findall(buf)
+            if hits: p.set(pct=int(hits[-1]))
+    labels = LABEL_RE.findall(buf)
+    if labels:
+        verb, what = labels[-1]
+        p.set(detail=f"{verb.decode()} {what.decode('utf8','replace')}")
+
+# ------------------------------------------------------------------ publish
+
+def publish(p: Progress, path: Path) -> None:
+    if not p.dirty: return
+    p.dirty = False
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(p.as_dict()))
+    tmp.replace(path)                                        # never a half-written read
+
+def mirror_to_tty(p: Progress, tty) -> None:
+    """Re-emit OSC 9;4 to a controlling terminal when there is one, so a
+    terminal-hosted harness gets the same bar for free."""
+    if not tty: return
+    seq = f"\033]9;4;0\007" if p.status != "running" else (
+        f"\033]9;4;3\007" if p.pct is None else f"\033]9;4;1;{p.pct}\007")
+    try:
+        tty.write(seq); tty.flush()
+    except Exception:
+        pass
+
+# ---------------------------------------------------------------------- run
+
+def build_env() -> dict:
+    env = dict(os.environ)
+    # Tools gate their rich output on believing they are interactive.
+    env.setdefault("TERM", "xterm-256color")
+    # Cargo emits OSC 9;4 only with terminal integration on, and only when
+    # colour detection has not been forced off.
+    env["CARGO_TERM_PROGRESS_TERM_INTEGRATION"] = "true"
+    # Not progress.when=always: that demands an explicit width, and under a PTY
+    # cargo draws the bar on its own. Colour must stay on -- forcing it off also
+    # turns terminal integration off, so no OSC is emitted.
+    env.pop("CARGO_TERM_COLOR", None)
+    env.pop("CARGO_TERM_PROGRESS_WHEN", None)
+    env.setdefault("FORCE_COLOR", "1")
+    return env
+
+def run(args) -> int:
+    d = state_dir(); d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{args.name}.json"
+    p = Progress(args.name)
+
+    cmd = args.command
+    if args.remote:
+        script = "\n".join([
+            '$ProgressPreference = "SilentlyContinue"',
+            '$env:CARGO_TERM_PROGRESS_TERM_INTEGRATION = "true"',
+            '$env:CARGO_TERM_PROGRESS_WHEN = "always"',
+            " ".join(cmd),
+        ])
+        import base64
+        enc = base64.b64encode(script.encode("utf-16-le")).decode()
+        cmd = ["ssh", "-o", "BatchMode=yes", args.remote,
+               f"powershell -NoProfile -EncodedCommand {enc}"]
+
+    tty = None
+    try:
+        tty = open("/dev/tty", "w")                          # absent under a UI harness
+    except OSError:
+        pass
+
+    publish(p, path)
+    child_env = build_env()          # must be read before the fork clears nothing
+    pid, fd = pty.fork()
+    if pid == 0:
+        try: os.execvpe(cmd[0], cmd, child_env)
+        except Exception: os._exit(127)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 200, 0, 0))
+
+    tail, rc, last = b"", None, 0.0
+    try:
+        while True:
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try: chunk = os.read(fd, 65536)
+                except OSError as e:
+                    if e.errno != errno.EIO: raise
+                    chunk = b""
+                if chunk:
+                    feed(chunk, p)
+                    tail = (tail + chunk)[-8192:]
+                    if args.echo: sys.stdout.buffer.write(chunk); sys.stdout.buffer.flush()
+                else:
+                    break
+            now = time.time()
+            if now - last > 0.25:                            # cap writes, not reads
+                publish(p, path); mirror_to_tty(p, tty); last = now
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done == pid:
+                rc = os.waitstatus_to_exitcode(status); break
+        if rc is None:
+            rc = os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1])
+    except KeyboardInterrupt:
+        os.kill(pid, signal.SIGINT); rc = 130
+
+    p.set(status="done" if rc == 0 else "error", pct=100 if rc == 0 else p.pct)
+    p.dirty = True; publish(p, path); mirror_to_tty(p, tty)
+    time.sleep(args.linger)
+    path.unlink(missing_ok=True)
+    if tty:
+        try: tty.write("\033]9;4;0\007"); tty.flush()
+        except Exception: pass
+    if rc != 0:
+        sys.stderr.write(tail.decode("utf8", "replace")[-2000:])
+    return rc
+
+# ------------------------------------------------------------------ readers
+
+def read_all():
+    d = state_dir()
+    if not d.is_dir(): return []
+    out = []
+    for f in sorted(d.glob("*.json")):
+        try: out.append(json.loads(f.read_text()))
+        except Exception: pass
+    return [r for r in out if time.time() - r.get("updated", 0) < 300]
+
+def render(r) -> str:
+    pct = r.get("percent")
+    bar = "".join("#" if i * 5 < (pct or 0) else "." for i in range(20)) if pct is not None else "-" * 20
+    head = f"{r['name']} [{bar}] {pct if pct is not None else '--'}%"
+    return f"{head} {r.get('detail','')}".rstrip()
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="agent-progress")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run"); r.add_argument("name")
+    r.add_argument("--remote", help="ssh host: wrap the command in PowerShell over ssh")
+    r.add_argument("--echo", action="store_true", help="also copy output to stdout")
+    r.add_argument("--linger", type=float, default=3.0)
+    sub.add_parser("list"); sub.add_parser("watch"); sub.add_parser("statusline")
+
+    # Split on the first bare `--` ourselves. argparse.REMAINDER would swallow
+    # this command's own options whenever they appear before it.
+    argv = sys.argv[1:]
+    command: list[str] = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, command = argv[:cut], argv[cut + 1:]
+    a = ap.parse_args(argv)
+    a.command = command
+
+    if a.cmd == "run":
+        if not a.command: ap.error("no command given; put it after `--`")
+        return run(a)
+    if a.cmd in ("list", "statusline"):
+        for x in read_all(): print(render(x))
+        return 0
+    if a.cmd == "watch":
+        try:
+            while True:
+                rows = read_all()
+                sys.stdout.write("\033[H\033[2J" + ("\n".join(render(x) for x in rows) or "no active runs") + "\n")
+                sys.stdout.flush(); time.sleep(0.5)
+        except KeyboardInterrupt: return 0
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
