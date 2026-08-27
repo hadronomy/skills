@@ -6,16 +6,16 @@
     "opencode"
   ],
   "sources": {
+    "aidenybai/react-grab": {
+      "sourceUrl": "https://github.com/aidenybai/react-grab.git",
+      "skills": [
+        "react-grab"
+      ]
+    },
     "AminBlg/SimpleEnglish": {
       "sourceUrl": "https://github.com/AminBlg/SimpleEnglish.git",
       "skills": [
         "simple-english"
-      ]
-    },
-    "davis7dotsh/better-context": {
-      "sourceUrl": "https://github.com/davis7dotsh/better-context.git",
-      "skills": [
-        "btca-cli"
       ]
     },
     "dmmulroy/anti-slop": {
@@ -112,8 +112,13 @@
         "writing-beats",
         "writing-for-agents",
         "writing-fragments",
-        "writing-great-skills",
         "writing-shape"
+      ]
+    },
+    "millionco/react-doctor": {
+      "sourceUrl": "https://github.com/millionco/react-doctor.git",
+      "skills": [
+        "react-doctor"
       ]
     },
     "msmps/opentui-skill": {
