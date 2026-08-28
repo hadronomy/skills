@@ -5,7 +5,6 @@
 // status-line hook to attach to.
 import AppKit
 import MetalKit
-import SwiftUI
 
 // MARK: - Model
 
@@ -179,64 +178,80 @@ final class CapsuleView: MTKView {
     }
 }
 
-// MARK: - Dropdown
+// MARK: - Menu row
+//
+// An NSMenu, not an NSPopover. A popover carries an arrow and its own chrome,
+// which is why this looked unlike every other menu bar app, and it needs the
+// app to take key window -- expensive for an accessory app, and the source of
+// the lag on every click. A menu opens through AppKit with no activation.
 
-struct RunRow: View {
-    let run: Run
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: run.isError ? "exclamationmark.triangle.fill"
-                        : (run.status == "done" ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath"))
-                    .foregroundStyle(run.isError ? .red : (run.status == "done" ? .green : .secondary))
-                    .font(.system(size: 12, weight: .semibold))
-                Text(run.name).font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 12)
-                Text(run.percent.map { "\($0)%" } ?? "—")
-                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            ProgressView(value: run.fraction ?? 0)
-                .progressViewStyle(.linear)
-                .tint(run.isError ? .red : .accentColor)
-                .opacity(run.fraction == nil ? 0.45 : 1)
-                .animation(.smooth(duration: 0.35), value: run.fraction)
-            if let d = run.detail, !d.isEmpty {
-                Text(d).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            }
+final class RunRowView: NSView {
+    private let title = NSTextField(labelWithString: "")
+    private let percent = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
+    private let bar = NSProgressIndicator()
+
+    init(width: CGFloat) {
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 52))
+        let inset: CGFloat = 14
+
+        title.font = .systemFont(ofSize: 13, weight: .medium)
+        percent.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        percent.textColor = .secondaryLabelColor
+        percent.alignment = .right
+        detail.font = .systemFont(ofSize: 11)
+        detail.textColor = .secondaryLabelColor
+        detail.lineBreakMode = .byTruncatingTail
+
+        bar.style = .bar
+        bar.minValue = 0
+        bar.maxValue = 1
+        bar.controlSize = .small
+        bar.usesThreadedAnimation = true
+
+        for v in [title, percent, detail, bar] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
         }
-        .padding(.vertical, 6)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            percent.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            percent.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
+            percent.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 8),
+
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            bar.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 6),
+
+            detail.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            detail.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            detail.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 5),
+        ])
     }
-}
+    required init?(coder: NSCoder) { fatalError() }
 
-struct PanelView: View {
-    @ObservedObject var store: Store
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if store.runs.isEmpty {
-                Text("No active runs")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .padding(.vertical, 10)
-            } else {
-                ForEach(store.runs) { RunRow(run: $0) }
-            }
-            Divider().padding(.vertical, 4)
-            Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+    func apply(_ run: Run) {
+        title.stringValue = run.name
+        percent.stringValue = run.percent.map { "\($0)%" } ?? "—"
+        let d = run.detail ?? ""
+        detail.stringValue = d.isEmpty ? run.status : d
+        if let f = run.fraction {
+            if bar.isIndeterminate { bar.stopAnimation(nil); bar.isIndeterminate = false }
+            bar.doubleValue = f
+        } else if !bar.isIndeterminate {
+            bar.isIndeterminate = true
+            bar.startAnimation(nil)
         }
-        .padding(12)
-        .frame(width: 280)
     }
 }
 
 // MARK: - App
 
-@MainActor final class Controller: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+@MainActor final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var item: NSStatusItem!
     private var capsule: CapsuleView!
-    private var popover: NSPopover!
+    private let menu = NSMenu()
     private let store = Store()
     private var timer: Timer?
 
@@ -246,8 +261,6 @@ struct PanelView: View {
     func applicationDidFinishLaunching(_ note: Notification) {
         item = NSStatusBar.system.statusItem(withLength: idleWidth)
         guard let button = item.button else { return }
-        button.target = self
-        button.action = #selector(toggle)
 
         capsule = CapsuleView()
         // Auto Layout inside an NSStatusItem button is unreliable: the button
@@ -267,10 +280,10 @@ struct PanelView: View {
         }
         layoutCapsule()
 
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: PanelView(store: store))
+        // Handing the menu to the status item lets AppKit open it directly.
+        // Routing through a button action costs a click-to-open delay.
+        menu.delegate = self
+        item.menu = menu
 
         let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -280,13 +293,28 @@ struct PanelView: View {
         refresh()
     }
 
-    @objc private func toggle() {
-        guard let button = item.button else { return }
-        if popover.isShown { popover.performClose(nil) }
-        else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+    // Built only as the menu opens, rather than kept in sync on every tick.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        store.reload()
+        menu.removeAllItems()
+        let width: CGFloat = 280
+
+        if store.runs.isEmpty {
+            let empty = NSMenuItem(title: "No active runs", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        } else {
+            for run in store.runs {
+                let row = NSMenuItem()
+                let view = RunRowView(width: width)
+                view.apply(run)
+                row.view = view
+                menu.addItem(row)
+            }
         }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit AgentProgress",
+                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     }
 
     private func layoutCapsule() {

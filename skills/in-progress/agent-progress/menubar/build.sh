@@ -9,7 +9,7 @@ mkdir -p "$macos"
 
 swiftc -O -o "$macos/AgentProgress" \
   "$here/Shaders.swift" "$here/AgentProgress.swift" "$here/Entry.swift" \
-  -framework AppKit -framework MetalKit -framework SwiftUI \
+  -framework AppKit -framework MetalKit \
   -target arm64-apple-macosx14.0
 
 cat > "$app/Contents/Info.plist" <<PLIST

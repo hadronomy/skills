@@ -39,7 +39,9 @@ OSC_RE = re.compile(rb"\x1b\]9;4;([0-4]);?(\d*)(?:\x07|\x1b\\)")
 BAR_RE = re.compile(rb"\[[=>\s#.-]*\]\s+(\d+)\s*/\s*(\d+)(?::\s*([^\r\n]*))?")
 PCT_RE = re.compile(rb"(?<![\d.])(\d{1,3})%")
 PROTO_RE = re.compile(rb"progress:\s*(\d+)\s*/\s*(\d+)\s*(.*)")
-LABEL_RE = re.compile(rb"^\s*(Compiling|Building|Checking|Downloading|Installing|Running|Linking)\s+(\S+)", re.M)
+# "Building" is deliberately absent: it is cargo's own progress-bar prefix,
+# so matching it here captures the bar itself as though it were a unit name.
+LABEL_RE = re.compile(rb"^\s*(Compiling|Checking|Downloading|Installing|Linking)\s+(\S+)", re.M)
 
 class Progress:
     """Newest known state of one run."""
@@ -137,8 +139,26 @@ def run(args) -> int:
     if args.remote:
         script = "\n".join([
             '$ProgressPreference = "SilentlyContinue"',
+            # Windows disables remote-to-local symlink evaluation by default, so
+            # an SSH session cannot follow rustup's shims: .cargo\\bin\\cargo.exe is
+            # a 0-byte symlink to rustup.exe and invoking it fails with
+            # ERROR_UNTRUSTED_MOUNT_POINT (448). rustup.exe itself is a real
+            # file, so ask it where the toolchain lives and put those real
+            # binaries first on PATH. No administrator rights, and a no-op
+            # wherever the shims resolve normally.
+            '$rustup = Join-Path $env:USERPROFILE ".cargo\\bin\\rustup.exe"',
+            'if (Test-Path $rustup) {',
+            '  $resolved = & $rustup which cargo 2>$null',
+            '  if ($LASTEXITCODE -eq 0 -and $resolved) {',
+            '    $env:PATH = (Split-Path $resolved -Parent) + ";" + $env:PATH',
+            '  }',
+            '}',
             '$env:CARGO_TERM_PROGRESS_TERM_INTEGRATION = "true"',
+            # ssh runs the remote command without a pty, so cargo sees no
+            # terminal and hides its bar. Forcing it on needs an explicit width:
+            # "always" without one is a hard error, not a fallback.
             '$env:CARGO_TERM_PROGRESS_WHEN = "always"',
+            '$env:CARGO_TERM_PROGRESS_WIDTH = "100"',
             " ".join(cmd),
         ])
         import base64

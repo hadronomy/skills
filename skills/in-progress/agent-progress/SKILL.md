@@ -96,6 +96,33 @@ Two things the renderer depends on, neither obvious:
   not reintroduce `NSStatusBar.thickness` into the render path: it reports the
   item, not the bar, and the two differ by a lot on a notched display.
 
+## Running on a remote host
+
+```bash
+agent-progress run build --remote windows-mcp -- 'cd C:\path\to\repo; cargo build'
+```
+
+The command runs through `ssh` in PowerShell. Two things about that transport
+are not obvious, and both look like the skill is broken when they bite:
+
+**Windows blocks remote-to-local symlink evaluation.** `fsutil behavior query
+SymlinkEvaluation` reports R2L and R2R disabled by default. An SSH session
+counts as remote, so it cannot follow rustup's shims: `.cargo\bin\cargo.exe` is
+a 0-byte symlink to `rustup.exe`, and invoking it fails with
+`ERROR_UNTRUSTED_MOUNT_POINT` (448). The runner asks `rustup which cargo` for
+the toolchain's real binaries and puts them first on `PATH`. `rustup.exe` is
+itself a real file, so it is reachable. This needs no administrator rights, and
+does nothing where the shims already resolve. Enabling R2L with `fsutil` also
+works but relaxes a security control machine-wide, so prefer the resolve.
+
+**ssh gives the remote command no pty**, so cargo sees no terminal and hides its
+progress bar. The runner forces it with `CARGO_TERM_PROGRESS_WHEN=always`, which
+requires `CARGO_TERM_PROGRESS_WIDTH` — "always" without a width is a hard error,
+not a fallback.
+
+Prefer this over driving a build through `mcp__windows__PowerShell`, which
+blocks, caps at 600 seconds, and returns nothing until it finishes.
+
 ## Rules
 
 - One `run` per named task. The name is the key, so a second run with the same
