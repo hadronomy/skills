@@ -96,32 +96,54 @@ Two things the renderer depends on, neither obvious:
   not reintroduce `NSStatusBar.thickness` into the render path: it reports the
   item, not the bar, and the two differ by a lot on a notched display.
 
-## Running on a remote host
+## Run on a remote host
 
 ```bash
 agent-progress run build --remote windows-mcp -- 'cd C:\path\to\repo; cargo build'
 ```
 
-The command runs through `ssh` in PowerShell. Two things about that transport
-are not obvious, and both look like the skill is broken when they bite:
+The command runs over `ssh` inside PowerShell. Two properties of that transport
+cause errors that look like faults in this skill.
 
-**Windows blocks remote-to-local symlink evaluation.** `fsutil behavior query
-SymlinkEvaluation` reports R2L and R2R disabled by default. An SSH session
-counts as remote, so it cannot follow rustup's shims: `.cargo\bin\cargo.exe` is
-a 0-byte symlink to `rustup.exe`, and invoking it fails with
-`ERROR_UNTRUSTED_MOUNT_POINT` (448). The runner asks `rustup which cargo` for
-the toolchain's real binaries and puts them first on `PATH`. `rustup.exe` is
-itself a real file, so it is reachable. This needs no administrator rights, and
-does nothing where the shims already resolve. Enabling R2L with `fsutil` also
-works but relaxes a security control machine-wide, so prefer the resolve.
+### Windows blocks symlinks from a remote session
 
-**ssh gives the remote command no pty**, so cargo sees no terminal and hides its
-progress bar. The runner forces it with `CARGO_TERM_PROGRESS_WHEN=always`, which
-requires `CARGO_TERM_PROGRESS_WIDTH` — "always" without a width is a hard error,
-not a fallback.
+Windows has four symlink evaluation modes. `fsutil behavior query
+SymlinkEvaluation` reports remote-to-local (R2L) and remote-to-remote (R2R) as
+disabled by default. An SSH session counts as remote.
 
-Prefer this over driving a build through `mcp__windows__PowerShell`, which
-blocks, caps at 600 seconds, and returns nothing until it finishes.
+rustup installs `.cargo\bin\cargo.exe` as a 0-byte symlink to `rustup.exe`. A
+remote session cannot follow that link. The command stops with
+`ERROR_UNTRUSTED_MOUNT_POINT` (448).
+
+`rustup.exe` is a real file, so a remote session can run it. The runner asks
+`rustup.exe` for the real path of the toolchain:
+
+```powershell
+$resolved = & $rustup which cargo
+$env:PATH = (Split-Path $resolved -Parent) + ";" + $env:PATH
+```
+
+That directory holds real binaries, not symlinks. The step needs no
+administrator rights. On a machine where the shims resolve, the step changes
+nothing.
+
+`fsutil behavior set SymlinkEvaluation R2L:1` also corrects the error. That
+command needs administrator rights, and it relaxes a security control for the
+whole machine. Use the path resolution instead.
+
+### ssh gives the remote command no pty
+
+When cargo finds no terminal, it hides its progress bar. The runner sets
+`CARGO_TERM_PROGRESS_WHEN=always` to force the bar.
+
+CAUTION: `CARGO_TERM_PROGRESS_WHEN=always` needs `CARGO_TERM_PROGRESS_WIDTH`.
+Without the width, cargo stops with an error. Cargo does not use a default
+width.
+
+### Use ssh, not the MCP tool
+
+`mcp__windows__PowerShell` blocks. It stops at 600 seconds. It returns no output
+until the command ends.
 
 ## Rules
 
