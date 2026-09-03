@@ -1,0 +1,3 @@
+interface:
+  display_name: "Effect Craft"
+  short_description: "Effect TypeScript APIs: models, services, surfaces, and docs discipline"

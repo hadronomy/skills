@@ -18,6 +18,7 @@
   ],
   "skills": [
     "./skills/engineering/pr-craft",
-    "./skills/engineering/rust-craft"
+    "./skills/engineering/rust-craft",
+    "./skills/engineering/effect-craft"
   ]
 }
