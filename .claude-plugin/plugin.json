@@ -19,6 +19,7 @@
   "skills": [
     "./skills/engineering/pr-craft",
     "./skills/engineering/rust-craft",
-    "./skills/engineering/effect-craft"
+    "./skills/engineering/effect-craft",
+    "./skills/engineering/setup-hadronomy"
   ]
 }
