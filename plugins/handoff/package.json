@@ -11,7 +11,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "diagnostics": "effect-tsgo diagnostics --project tsconfig.json --strict"
+    "diagnostics": "effect-tsgo diagnostics --project tsconfig.json --strict",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint"
   },
   "dependencies": {
     "@opencode-ai/client": "0.0.0-beta-19086",
