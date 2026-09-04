@@ -4,6 +4,18 @@ One RPC method moves a session to a resumable pointer. Callers send a
 structured intent; the plugin captures history, redacts secrets, and renders
 a pointer. Fixes land in one module.
 
+## Install
+
+Use the Git route for a fixed release. Use the local path to develop the
+plugin.
+
+1. Run `opencode2 --version` to show the host version.
+2. If the host is older than beta-19086, upgrade the CLI to the `beta` tag.
+3. Run `opencode2 plugin add 'github:hadronomy/skills#<commit>::path:plugins/handoff'` to install a fixed release. Replace `<commit>` with the full commit hash.
+4. Run `opencode2 plugin list` to show the installed plugin.
+5. For local development, add the absolute workspace path to the `plugins` array in `opencode.jsonc`. The entry looks like `"/Users/hadronomy/repos/skills/plugins/handoff"`.
+6. Run `/handoff` in a session to start a handoff.
+
 ## Use
 
 Slash command in any session:
