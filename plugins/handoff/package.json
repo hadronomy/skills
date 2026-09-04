@@ -10,7 +10,8 @@
   "files": ["src"],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "diagnostics": "effect-tsgo diagnostics --project tsconfig.json --strict"
   },
   "dependencies": {
     "@opencode-ai/client": "0.0.0-beta-19086",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@effect/doctest": "4.0.0-rc.112",
+    "@effect/tsgo": "0.41.0",
     "@effect/vitest": "4.0.0-rc.112",
     "@types/node": "^22.10.2",
     "typescript": "^7.0.2",

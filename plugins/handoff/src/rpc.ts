@@ -95,7 +95,7 @@ export const ForkPointer = Schema.Struct({
   kind: Schema.Literal("fork-local"),
   key: Schema.String,
   nextSessionID: Schema.String,
-  messages: Schema.Number,
+  messages: Schema.Finite,
 })
 export interface ForkPointer extends Schema.Schema.Type<typeof ForkPointer> {}
 
@@ -109,7 +109,7 @@ export const FilePointer = Schema.Struct({
   kind: Schema.Literal("export-file"),
   key: Schema.String,
   file: Schema.String,
-  messages: Schema.Number,
+  messages: Schema.Finite,
 })
 export interface FilePointer extends Schema.Schema.Type<typeof FilePointer> {}
 

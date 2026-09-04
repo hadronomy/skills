@@ -9,10 +9,9 @@ import { orStageFailure } from "./stage.js"
 const renderFailed = () => new RenderFailed({ op: "render" })
 
 const gate = Effect.fn("Handoff.render.gate")(function* (value: unknown) {
-  return yield* Effect.try({
-    try: () => Schema.decodeUnknownSync(Schema.Json)(value),
-    catch: () => renderFailed(),
-  })
+  return yield* Schema.decodeUnknownEffect(Schema.Json)(value).pipe(
+    Effect.mapError(renderFailed),
+  )
 })
 
 const brief = (sessionID: string, intent: Intent, captured: Captured): string => {

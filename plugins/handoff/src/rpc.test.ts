@@ -19,7 +19,7 @@ const minimal = {
 
 describe("rpc contract", () => {
   it("fills export-file sanitize default on decode", () => {
-    const out = Schema.decodeUnknownSync(TransferInput)({
+    const out = Schema.decodeSync(TransferInput)({
       sessionID: "ses_abc",
       intent: { goal: "audit", directive: "queue", refs: [], resume: { mode: "export-file" } },
     })
@@ -55,10 +55,12 @@ describe("rpc contract", () => {
   })
 
   it("accepts a before boundary with message id", () => {
-    const out = Schema.decodeUnknownSync(TransferInput)({
-      ...minimal,
+    const out = Schema.decodeSync(TransferInput)({
+      sessionID: "ses_abc",
       intent: {
-        ...minimal.intent,
+        goal: "audit",
+        directive: "resume",
+        refs: [],
         resume: { mode: "fork-local", boundary: { type: "before", messageID: "msg_1" } },
       },
     })
@@ -67,19 +69,19 @@ describe("rpc contract", () => {
   })
 
   it("decodes each pointer arm and rejects the xor violation", () => {
-    expect(Schema.decodeUnknownSync(ForkPointer)({
+    expect(Schema.decodeSync(ForkPointer)({
       kind: "fork-local",
       key: "handoff/ses_abc",
       nextSessionID: "ses_def",
       messages: 12,
     }).kind).toBe("fork-local")
-    expect(Schema.decodeUnknownSync(FilePointer)({
+    expect(Schema.decodeSync(FilePointer)({
       kind: "export-file",
       key: "handoff/ses_abc",
       file: "/tmp/handoff-ses_abc.json",
       messages: 12,
     }).kind).toBe("export-file")
-    expect(Schema.decodeUnknownSync(Pointer)({
+    expect(Schema.decodeSync(Pointer)({
       kind: "fork-local",
       key: "handoff/ses_abc",
       nextSessionID: "ses_def",
@@ -91,7 +93,7 @@ describe("rpc contract", () => {
   })
 
   it("keeps goal and refs limits on intent", () => {
-    const out = Schema.decodeUnknownSync(Intent)({ goal: "g", directive: "branch", refs: ["a"] })
+    const out = Schema.decodeSync(Intent)({ goal: "g", directive: "branch", refs: ["a"] })
     expect(out.directive).toBe("branch")
   })
 

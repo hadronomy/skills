@@ -43,6 +43,10 @@ const script = (overrides: Partial<SessionScript> = {}): SessionScript => ({
   ...overrides,
 })
 
+class TransportFault extends Schema.TaggedError<TransportFault>()("TransportFault", {
+  message: Schema.String,
+}) {}
+
 interface SessionCalls {
   readonly context: number
   readonly get: number
@@ -51,8 +55,8 @@ interface SessionCalls {
 }
 
 class TestSession extends Context.Service<TestSession, {
-  readonly calls: () => Effect.Effect<SessionCalls>
-  readonly syntheticInputs: () => Effect.Effect<ReadonlyArray<unknown>>
+  readonly calls: Effect.Effect<SessionCalls>
+  readonly syntheticInputs: Effect.Effect<ReadonlyArray<unknown>>
 }>()("Handoff/TestSession") {}
 
 const makeSessionTest = (sessionScript: SessionScript) =>
@@ -71,31 +75,31 @@ const makeSessionTest = (sessionScript: SessionScript) =>
             remainingContextFailures,
             (n) => Math.max(0, n - 1),
           )
-          if (remaining > 0) return yield* Effect.fail(new Error("transport"))
+          if (remaining > 0) return yield* new TransportFault({ message: "transport" })
           return [...sessionScript.messages]
         }),
         get: Effect.fn("Handoff.TestSession.get")(function* () {
           yield* bump("get")
-          if (sessionScript.failGet) return yield* Effect.fail(new Error("gone"))
+          if (sessionScript.failGet) return yield* new TransportFault({ message: "gone" })
           return info("ses_abc")
         }),
         create: Effect.fn("Handoff.TestSession.create")(function* () {
           yield* bump("create")
-          if (sessionScript.failCreate) return yield* Effect.fail(new Error("denied"))
+          if (sessionScript.failCreate) return yield* new TransportFault({ message: "denied" })
           return info(sessionScript.nextID)
         }),
         synthetic: (input: unknown) =>
           Effect.gen(function* () {
             yield* bump("synthetic")
             yield* Ref.update(syntheticInputs, (current) => [...current, input])
-            if (sessionScript.failSynthetic) return yield* Effect.fail(new Error("busy"))
+            if (sessionScript.failSynthetic) return yield* new TransportFault({ message: "busy" })
             return syntheticOut()
           }),
       })
 
       const probe = TestSession.of({
-        calls: () => Ref.get(calls),
-        syntheticInputs: () => Ref.get(syntheticInputs),
+        calls: Ref.get(calls),
+        syntheticInputs: Ref.get(syntheticInputs),
       })
       return Context.empty().pipe(
         Context.add(Host.SessionGateway, gateway),
@@ -105,7 +109,7 @@ const makeSessionTest = (sessionScript: SessionScript) =>
   )
 
 class TestStorage extends Context.Service<TestStorage, {
-  readonly store: () => Effect.Effect<ReadonlyMap<string, Schema.Json>>
+  readonly store: Effect.Effect<ReadonlyMap<string, Schema.Json>>
 }>()("Handoff/TestStorage") {}
 
 const makeStorageTest = (opts: { dieSet?: boolean; blankGet?: boolean } = {}) =>
@@ -113,18 +117,16 @@ const makeStorageTest = (opts: { dieSet?: boolean; blankGet?: boolean } = {}) =>
     Effect.gen(function* () {
       const store = yield* Ref.make(new Map<string, Schema.Json>())
       const gateway = Host.StorageGateway.of({
-        get: (key) =>
-          opts.blankGet
-            ? Effect.succeed(undefined)
-            : Ref.get(store).pipe(Effect.map((current) => current.get(key))),
+        get: (key) => Ref.get(store).pipe(Effect.map((current) => current.get(key))),
         set: (key, value) => {
-          if (opts.dieSet) return Effect.die(new Error("disk"))
+          if (opts.dieSet) return Effect.die(new TransportFault({ message: "disk" }))
+          if (opts.blankGet) return Effect.void
           return Ref.update(store, (current) => new Map(current).set(key, value))
         },
         remove: (_key) => Effect.void,
         scan: () => Effect.succeed({ entries: [] }),
       })
-      const probe = TestStorage.of({ store: () => Ref.get(store) })
+      const probe = TestStorage.of({ store: Ref.get(store) })
       return Context.empty().pipe(
         Context.add(Host.StorageGateway, gateway),
         Context.add(TestStorage, probe),
@@ -133,21 +135,18 @@ const makeStorageTest = (opts: { dieSet?: boolean; blankGet?: boolean } = {}) =>
   )
 
 class TestFiles extends Context.Service<TestFiles, {
-  readonly files: () => Effect.Effect<ReadonlyMap<string, string>>
+  readonly files: Effect.Effect<ReadonlyMap<string, string>>
 }>()("Handoff/TestFiles") {}
 
-const makeFilesTest = (opts: { failWrite?: boolean } = {}) =>
+const makeFilesTest = () =>
   Layer.effectContext(
     Effect.gen(function* () {
       const files = yield* Ref.make(new Map<string, string>())
       const writer = Host.FileWriter.of({
-        write: (path, data) => {
-          if (opts.failWrite) return Effect.fail(new Error("readonly"))
-          return Ref.update(files, (current) => new Map(current).set(path, data))
-        },
+        write: (path, data) => Ref.update(files, (current) => new Map(current).set(path, data)),
         tmpdir: () => "/tmp/handoff-test",
       })
-      const probe = TestFiles.of({ files: () => Ref.get(files) })
+      const probe = TestFiles.of({ files: Ref.get(files) })
       return Context.empty().pipe(
         Context.add(Host.FileWriter, writer),
         Context.add(TestFiles, probe),
@@ -158,7 +157,6 @@ const makeFilesTest = (opts: { failWrite?: boolean } = {}) =>
 const testLayer = (
   sessionScript: SessionScript = script(),
   storageOpts: { dieSet?: boolean; blankGet?: boolean } = {},
-  filesOpts: { failWrite?: boolean } = {},
 ) => {
   // Provide discards the fakes' outputs, so merge them back: the app sees
   // the gateways while tests keep the probes. One shared reference means
@@ -166,7 +164,7 @@ const testLayer = (
   const fakes = Layer.mergeAll(
     makeSessionTest(sessionScript),
     makeStorageTest(storageOpts),
-    makeFilesTest(filesOpts),
+    makeFilesTest(),
   )
   const app = HandoffLive.pipe(
     Layer.provide(Layer.mergeAll(CaptureLive, RenderLive)),
@@ -194,12 +192,12 @@ describe("transfer", () => {
         messages: 2,
       })
       expect(wireRoundTrip(pointer)).toEqual(pointer)
-      const store = yield* storage.store()
+      const store = yield* storage.store
       expect(store.has("handoff/ses_abc")).toBe(true)
       expect(store.get("handoff/latest")).toEqual({ key: "handoff/ses_abc" })
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.synthetic).toBe(1)
-      const inputs = yield* session.syntheticInputs()
+      const inputs = yield* session.syntheticInputs
       const injected = inputs[0] as { delivery: string; resume: boolean; text: string }
       expect(injected.delivery).toBe("steer")
       expect(injected.resume).toBe(true)
@@ -229,12 +227,12 @@ describe("transfer", () => {
         messages: 2,
       })
       expect(wireRoundTrip(pointer)).toEqual(pointer)
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.create).toBe(0)
       expect(calls.synthetic).toBe(0)
-      const store = yield* storage.store()
+      const store = yield* storage.store
       expect(store.has("handoff/ses_abc")).toBe(true)
-      const written = yield* files.files()
+      const written = yield* files.files
       const envelope = JSON.parse(written.get("/tmp/x/handoff-ses_abc.json") ?? "")
       expect(Object.keys(envelope).sort()).toEqual(["handoff", "info", "messages"])
       expect(envelope.messages).toHaveLength(2)
@@ -256,7 +254,7 @@ describe("transfer", () => {
         file: "/tmp/handoff-test/handoff-ses_abc.json",
         messages: 2,
       })
-      const written = yield* files.files()
+      const written = yield* files.files
       expect(written.has("/tmp/handoff-test/handoff-ses_abc.json")).toBe(true)
     }).pipe(Effect.provide(testLayer())))
 
@@ -267,9 +265,9 @@ describe("transfer", () => {
       const storage = yield* TestStorage
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("CaptureFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.context).toBe(1)
-      const store = yield* storage.store()
+      const store = yield* storage.store
       expect(store.size).toBe(0)
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script({ messages: [] })))))
@@ -280,7 +278,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const pointer = yield* handoff.transfer(minimal())
       expect(pointer.kind).toBe("fork-local")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.context).toBe(3)
     }).pipe(Effect.provide(testLayer(script({ failContext: 2 })))))
 
@@ -290,7 +288,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("CaptureFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.context).toBe(3)
     }).pipe(Effect.provide(testLayer(script({ failContext: 9 })))))
 
@@ -305,9 +303,9 @@ describe("transfer", () => {
       } else {
         expect.unreachable(`wrong failure: ${failure._tag}`)
       }
-      const store = yield* storage.store()
+      const store = yield* storage.store
       expect(store.size).toBe(0)
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.create).toBe(0)
       expect(calls.synthetic).toBe(0)
     }).pipe(Effect.provide(
@@ -330,9 +328,9 @@ describe("transfer", () => {
       })
       const pointer = yield* handoff.transfer(input)
       expect(pointer.kind).toBe("export-file")
-      const written = yield* files.files()
+      const written = yield* files.files
       expect(written.has("/tmp/x/handoff-ses_abc.json")).toBe(true)
-      const store = yield* storage.store()
+      const store = yield* storage.store
       expect(store.size).toBe(0)
     }).pipe(Effect.provide(
       testLayer(script({ messages: [userMsg("deploy with sk-ant-secret-key-1234567890")] })),
@@ -344,7 +342,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script(), { dieSet: true }))))
 
@@ -354,7 +352,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script(), { blankGet: true }))))
 
@@ -364,7 +362,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.create).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ failCreate: true })))))
 
@@ -374,7 +372,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
-      const calls = yield* session.calls()
+      const calls = yield* session.calls
       expect(calls.synthetic).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ failSynthetic: true })))))
 })

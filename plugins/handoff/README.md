@@ -49,6 +49,8 @@ Tests use `it.effect` with Ref-backed test layers (`TestSession`,
 run as tests through `@effect/doctest`: fences marked `ts import.meta.vitest`
 with trailing `// =>` assertions are extracted and run as isolated Vitest
 modules, the same way the Effect codebase runs its own docs.
+`effect-tsgo diagnostics --strict` (tsconfig `plugins` entry) keeps the
+Effect-specific rules green; it runs in CI.
 
 Package exports: `.` is the implementation, `./rpc` is the contract for
 callers that must not load the implementation.

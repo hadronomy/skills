@@ -12,7 +12,8 @@
     "skipLibCheck": true,
     "types": ["node"],
     "rootDir": "src",
-    "noEmit": true
+    "noEmit": true,
+    "plugins": [{ "name": "@effect/language-service" }]
   },
   "include": ["src"]
 }

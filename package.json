@@ -16,7 +16,8 @@
     "version": "changeset version && node scripts/sync-plugin-version.mjs",
     "check-plugin-version": "node scripts/sync-plugin-version.mjs --check",
     "typecheck": "bun run --cwd plugins/handoff typecheck",
-    "test": "bun run --cwd plugins/handoff test"
+    "test": "bun run --cwd plugins/handoff test",
+    "diagnostics": "bun run --cwd plugins/handoff diagnostics"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",

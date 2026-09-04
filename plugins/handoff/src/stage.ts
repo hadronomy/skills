@@ -15,8 +15,9 @@ export const orStageFailure = <A, E, TE>(
   make: () => TE,
 ): Effect.Effect<A, TE> =>
   fx.pipe(
-    Effect.mapError(() => make()),
-    Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.fail(make())
+    Effect.mapError(make),
+    Effect.catchCauseIf(
+      (cause) => !Cause.hasInterruptsOnly(cause),
+      () => Effect.fail(make()),
     ),
   )
