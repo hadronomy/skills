@@ -9,8 +9,14 @@ constructors, models, guards, services, tags, layers, errors, combinators,
 configuration. Services are contracts, tags identify them, layers provide
 them. Getters retrieve values while accessors read context.
 
-Runnable fences carry `import.meta.vitest` and run through the doctest
-tool at `packages/tools/doctest`. Inline assertions use trailing `// =>`
+Runnable fences carry `import.meta.vitest` and run through `@effect/doctest`.
+Configure `Doctest.plugin()` with `includeSource`, pinned at `4.0.0-rc.112`.
+Fence plus `// =>` plus Plugin plus `includeSource` is the proven set. This
+set is green under vitest `5.0.0`, though the peer range reads `vitest <5.0.0`.
+Peer ranges are advisory. Spike the range before you obey it. Native `if
+(import.meta.vitest)` blocks are unsupported. The plugin collects through
+generated collectors and never executes the source module. Native blocks that
+an agent invents test nothing. Inline assertions use trailing `// =>`
 comments with `Equal.equals` semantics. The transform runs neither Effects
 nor promises: await `Effect.runPromise` in examples, `Effect.runSync` only
 when sync run is the documented contract.
