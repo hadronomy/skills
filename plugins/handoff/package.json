@@ -1,0 +1,28 @@
+{
+  "name": "@hadronomy/opencode-handoff-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Session handoff for OpenCode v2: one RPC transfer from intent to resumable pointer.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rpc": "./src/rpc.ts"
+  },
+  "files": ["src"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencode-ai/client": "0.0.0-beta-19086",
+    "@opencode-ai/plugin": "0.0.0-beta-19086",
+    "@opencode-ai/schema": "0.0.0-beta-19086",
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "@effect/doctest": "4.0.0-rc.112",
+    "@effect/vitest": "4.0.0-rc.112",
+    "@types/node": "^22.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
