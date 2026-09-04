@@ -50,9 +50,9 @@ The `skills` CLI cannot restore globally-installed skills; only project-scope
 half:
 
 ```bash
-npm run restore -- --export   # snapshot ~/.agents/.skill-lock.json into global-skills.json
-npm run restore               # print the commands that rebuild it
-npm run restore -- --run      # execute them
+bun run restore -- --export   # snapshot ~/.agents/.skill-lock.json into global-skills.json
+bun run restore               # print the commands that rebuild it
+bun run restore -- --run      # execute them
 ```
 
 Commit `global-skills.json`. It is the intent; the lock is machine state.
@@ -60,14 +60,16 @@ Commit `global-skills.json`. It is the intent; the lock is machine state.
 ## Developing
 
 ```bash
-npm install
-npm run link       # symlink every skill into ~/.claude/skills and ~/.agents/skills
-npm run validate   # spec limits, link resolution, manifest drift, docs coverage
-npm run list
-npm run changeset
+bun install
+bun run link       # symlink every skill into ~/.claude/skills and ~/.agents/skills
+bun run validate   # spec limits, link resolution, manifest drift, docs coverage
+bun run list
+bun run changeset
+bun run typecheck  # TS workspaces under plugins/
+bun run test       # vitest workspaces under plugins/
 ```
 
-`npm run validate` is the gate. CI runs the same file.
+`bun run validate` is the gate. CI runs the same file.
 
 Conventions live in [`.agents/`](.agents): [authoring](.agents/authoring.md),
 [invocation](.agents/invocation.md), [docs pages](.agents/writing-docs.md),

@@ -20,13 +20,15 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
       # Opens or updates the version PR. Merging it bumps package.json,
       # syncs .claude-plugin/plugin.json, and writes CHANGELOG.md.
       - uses: changesets/action@v1
         with:
-          version: npm run version
+          version: bun run version
           commit: "chore: release"
           title: "chore: release"
         env:

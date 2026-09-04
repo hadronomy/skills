@@ -13,12 +13,18 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
       - name: Validate skills
-        run: npm run validate
+        run: bun run validate
       - name: Check plugin version matches package.json
-        run: npm run check-plugin-version
+        run: bun run check-plugin-version
+      - name: Typecheck workspaces
+        run: bun run typecheck
+      - name: Test workspaces
+        run: bun run test
       - name: Check shell scripts
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
