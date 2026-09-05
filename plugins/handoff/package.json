@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Session handoff for OpenCode v2: one RPC transfer from intent to resumable pointer.",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./index.ts",
     "./rpc": "./src/rpc.ts"
   },
   "files": ["src"],
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "diagnostics": "effect-tsgo diagnostics --project tsconfig.json --strict",
-    "prepare": "effect-tsgo patch --typescript --no-oxlint"
+    "prepare": "command -v effect-tsgo >/dev/null 2>&1 && effect-tsgo patch --typescript --no-oxlint || echo \"skipping effect-tsgo patch: binary not installed\""
   },
   "dependencies": {
     "@opencode-ai/client": "0.0.0-beta-19086",
@@ -26,6 +26,6 @@
     "@effect/vitest": "4.0.0-rc.112",
     "@types/node": "^22.10.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "^4.1.10"
   }
 }

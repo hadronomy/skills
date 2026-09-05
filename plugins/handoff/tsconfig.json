@@ -12,9 +12,8 @@
     "noUnusedLocals": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "rootDir": "src",
     "noEmit": true,
     "plugins": [{ "name": "@effect/language-service" }]
   },
-  "include": ["src"]
+  "include": ["src", "index.ts"]
 }
