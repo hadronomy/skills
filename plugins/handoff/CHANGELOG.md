@@ -1,5 +1,11 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.2.3
+
+### Patch Changes
+
+- [`14b884a`](https://github.com/hadronomy/skills/commit/14b884a07d0d2f65465ff1fa46cdba010df6f15d) Thanks [@hadronomy](https://github.com/hadronomy)! - Build the scanner's fake example key by concatenation instead of a literal. A key-shaped literal in shipped source trips the refusal in any session reading that source, including the plugin's own docs and tests.
+
 ## 0.2.2
 
 ### Patch Changes
