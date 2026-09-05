@@ -108,7 +108,7 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
   `boundary` and `delivery` failed validation.
 - `Intent.resume` defaults to fork-local. The spec's own slash-command
   example omits it.
-- Render uses `create` plus `synthetic`. The plugin context in beta-19086
+- Render uses `create` plus `synthetic`. The plugin context through beta-19135
   exposes no `fork`, `export`, or `import`, so both boundaries start a fresh
   session with the brief. The boundary stays recorded in the stash; true fork
   lands when the host exposes it.
@@ -145,10 +145,12 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
 
 ## Before a live server
 
-Unit tests cross the same seam as callers with fakes. These need a running
-beta-19086 server, which the local binary (beta-19059) cannot provide yet:
+Unit tests cross the same seam as callers with fakes. Against the live
+beta-19135 server (2026-09-05), `transfer` registers and round-trips through
+`Rpc.define`: a 307-message session returned a fork-local pointer. The
+`SessionForkInput.boundary` shape in the beta-19135 client tarball still
+matches the contract boundary. Still open, all needing a failure or file
+path no probe has exercised yet:
 
-- `transfer` registers and round-trips through `Rpc.define` server-side.
 - Declared error data shape matches the host's TaggedError encoding.
-- `SessionForkInput.boundary` still matches the contract boundary.
 - The export envelope still decodes as `SessionImportInput`.

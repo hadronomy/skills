@@ -169,16 +169,6 @@ describe("transfer", () => {
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script(), { blankGet: true }))))
 
-  it.effect("runs create once, with no retry", () =>
-    Effect.gen(function* () {
-      const handoff = yield* Transfer.Service
-      const session = yield* TestSession
-      const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("RenderFailed")
-      const calls = yield* session.calls
-      expect(calls.create).toBe(1)
-    }).pipe(Effect.provide(testLayer(script({ failCreate: true })))))
-
   it.effect("runs synthetic delivery once, with no retry", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
@@ -189,18 +179,17 @@ describe("transfer", () => {
       expect(calls.synthetic).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ failSynthetic: true })))))
 
-  it.effect("carries agent and model over from the source session", () =>
+  it.effect("passes agent and model at create from the source session", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const pointer = yield* handoff.transfer(minimal())
       expect(pointer.kind).toBe("fork-local")
+      const created = yield* session.created
+      expect(created.agent).toBe("build")
+      expect(created.model).toEqual({ providerID: "anthropic", id: "sonnet" })
       const calls = yield* session.calls
-      expect(calls.switchAgent).toBe(1)
-      expect(calls.switchModel).toBe(1)
-      const switched = yield* session.switched
-      expect(switched.agent).toBe("build")
-      expect(switched.model).toEqual({ providerID: "anthropic", id: "sonnet" })
+      expect(calls.create).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ identity: true })))))
 
   it.effect("prefers explicit intent agent and model over source info", () =>
@@ -218,23 +207,23 @@ describe("transfer", () => {
         },
       })
       yield* handoff.transfer(input)
-      const switched = yield* session.switched
-      expect(switched.agent).toBe("other")
-      expect(switched.model).toEqual({ providerID: "other", id: "model" })
+      const created = yield* session.created
+      expect(created.agent).toBe("other")
+      expect(created.model).toEqual({ providerID: "other", id: "model" })
     }).pipe(Effect.provide(testLayer(script({ identity: true })))))
 
-  it.effect("fails render when the agent switch fails, with no retry", () =>
+  it.effect("fails render when create fails, with no retry", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
       const calls = yield* session.calls
-      expect(calls.switchAgent).toBe(1)
+      expect(calls.create).toBe(1)
       expect(calls.synthetic).toBe(0)
-    }).pipe(Effect.provide(testLayer(script({ identity: true, failSwitch: true })))))
+    }).pipe(Effect.provide(testLayer(script({ failCreate: true })))))
 
-  it.effect("skips agent and model switches on export-file", () =>
+  it.effect("creates no session on export-file", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
@@ -245,8 +234,8 @@ describe("transfer", () => {
       const pointer = yield* handoff.transfer(input)
       expect(pointer.kind).toBe("export-file")
       const calls = yield* session.calls
-      expect(calls.switchAgent).toBe(0)
-      expect(calls.switchModel).toBe(0)
+      expect(calls.create).toBe(0)
+      expect(calls.synthetic).toBe(0)
     }).pipe(Effect.provide(testLayer(script({ identity: true })))))
 
   it.effect("renders skills and referenced artifacts into the brief", () =>

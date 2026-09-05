@@ -159,28 +159,19 @@ export const layer: Layer.Layer<
           Match.discriminator("mode")("fork-local", (arm) =>
             // No fork on the plugin context in beta, so both boundaries
             // start a fresh session with the brief. The boundary stays
-            // recorded in the stash. Agent and model carry over from the
-            // source session unless the intent names replacements, mirroring
-            // what a server fork preserves.
+            // recorded in the stash. Agent and model pass at create,
+            // mirroring what a server fork preserves.
             Effect.gen(function* () {
+              const agent = intent.agent ?? captured.info.agent
+              const model = intent.model ?? captured.info.model
               const next = yield* orStageFailure(
-                session.create({ title: intent.goal.slice(0, 120) }),
+                session.create({
+                  title: intent.goal.slice(0, 120),
+                  ...(agent === undefined ? {} : { agent }),
+                  ...(model === undefined ? {} : { model }),
+                }),
                 renderFailed,
               )
-              const agent = intent.agent ?? captured.info.agent
-              if (agent !== undefined) {
-                yield* orStageFailure(
-                  session.switchAgent({ sessionID: next.id, agent }),
-                  renderFailed,
-                )
-              }
-              const model = intent.model ?? captured.info.model
-              if (model !== undefined) {
-                yield* orStageFailure(
-                  session.switchModel({ sessionID: next.id, model }),
-                  renderFailed,
-                )
-              }
               yield* orStageFailure(
                 session.synthetic({
                   sessionID: next.id,

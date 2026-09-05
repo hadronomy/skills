@@ -65,6 +65,15 @@ export default Plugin.define({
               ? undefined
               : (yield* ctx.session.get({ sessionID: invocation.sessionID })).title
             const handoff = ctx.rpc(Handoff)
+            const key = `handoff/${invocation.sessionID}`
+            yield* ctx.session.synthetic({
+              sessionID: invocation.sessionID,
+              text: `Handoff started, capturing history…`,
+              description: "handoff",
+              metadata: { handoff: key },
+              delivery: "queue",
+              resume: false,
+            })
             const pointer = yield* handoff.transfer({
               sessionID: invocation.sessionID,
               intent: {

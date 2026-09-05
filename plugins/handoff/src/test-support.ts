@@ -57,7 +57,6 @@ export interface SessionScript {
   readonly failGet: boolean
   readonly failCreate: boolean
   readonly failSynthetic: boolean
-  readonly failSwitch: boolean
   readonly identity: boolean
   readonly nextID: string
 }
@@ -68,7 +67,6 @@ export const script = (overrides: Partial<SessionScript> = {}): SessionScript =>
   failGet: false,
   failCreate: false,
   failSynthetic: false,
-  failSwitch: false,
   identity: false,
   nextID: "ses_next",
   ...overrides,
@@ -83,14 +81,12 @@ export interface SessionCalls {
   readonly get: number
   readonly create: number
   readonly synthetic: number
-  readonly switchAgent: number
-  readonly switchModel: number
 }
 
 export class TestSession extends Context.Service<TestSession, {
   readonly calls: Effect.Effect<SessionCalls>
   readonly syntheticInputs: Effect.Effect<ReadonlyArray<SyntheticInput>>
-  readonly switched: Effect.Effect<{ agent: unknown; model: unknown }>
+  readonly created: Effect.Effect<{ agent: unknown; model: unknown }>
 }>()("Handoff/TestSession") {}
 
 export const makeSessionTest = (sessionScript: SessionScript) =>
@@ -101,12 +97,10 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
         get: 0,
         create: 0,
         synthetic: 0,
-        switchAgent: 0,
-        switchModel: 0,
       })
       const remainingContextFailures = yield* Ref.make(sessionScript.failContext)
       const syntheticInputs = yield* Ref.make<Array<SyntheticInput>>([])
-      const switched = yield* Ref.make<{ agent: unknown; model: unknown }>({ agent: undefined, model: undefined })
+      const created = yield* Ref.make<{ agent: unknown; model: unknown }>({ agent: undefined, model: undefined })
       const bump = (key: keyof SessionCalls) =>
         Ref.update(calls, (current) => ({ ...current, [key]: current[key] + 1 }))
 
@@ -125,20 +119,11 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
           if (sessionScript.failGet) return yield* new TransportFault({ message: "gone" })
           return info("ses_abc", sessionScript.identity)
         }),
-        create: Effect.fn("Handoff.TestSession.create")(function* () {
+        create: Effect.fn("Handoff.TestSession.create")(function* (input?: { agent?: unknown; model?: unknown }) {
           yield* bump("create")
+          yield* Ref.update(created, () => ({ agent: input?.agent, model: input?.model }))
           if (sessionScript.failCreate) return yield* new TransportFault({ message: "denied" })
           return info(sessionScript.nextID)
-        }),
-        switchAgent: Effect.fn("Handoff.TestSession.switchAgent")(function* (input: { agent: unknown }) {
-          yield* bump("switchAgent")
-          yield* Ref.update(switched, (current) => ({ ...current, agent: input.agent }))
-          if (sessionScript.failSwitch) return yield* new TransportFault({ message: "denied" })
-        }),
-        switchModel: Effect.fn("Handoff.TestSession.switchModel")(function* (input: { model: unknown }) {
-          yield* bump("switchModel")
-          yield* Ref.update(switched, (current) => ({ ...current, model: input.model }))
-          if (sessionScript.failSwitch) return yield* new TransportFault({ message: "denied" })
         }),
         synthetic: (input: SyntheticInput) =>
           Effect.gen(function* () {
@@ -152,7 +137,7 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
       const probe = TestSession.of({
         calls: Ref.get(calls),
         syntheticInputs: Ref.get(syntheticInputs),
-        switched: Ref.get(switched),
+        created: Ref.get(created),
       })
       return Context.empty().pipe(
         Context.add(Host.SessionGateway, gateway),

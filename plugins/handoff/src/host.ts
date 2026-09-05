@@ -18,10 +18,7 @@ import { Context, Effect, Layer } from "effect"
  */
 export class SessionGateway extends Context.Service<
   SessionGateway,
-  Pick<
-    SessionDomain,
-    "context" | "get" | "create" | "synthetic" | "switchAgent" | "switchModel"
-  >
+  Pick<SessionDomain, "context" | "get" | "create" | "synthetic">
 >()("@hadronomy/handoff/SessionGateway") {}
 
 /**
