@@ -63,7 +63,9 @@ const stringsIn = (value: unknown): Array<string> => {
  * import { findFirstSensitive } from "./redact.js"
  *
  * const clean = [{ id: "msg_1", time: { created: 1 }, text: "hello", type: "user" }]
- * const leaked = [{ id: "msg_2", time: { created: 1 }, text: "key sk-ant-secret-key-1234567890" }]
+ * // Built, not literal: a key-shaped literal here would trip the scanner in
+ * // any session reading this source.
+ * const leaked = [{ id: "msg_2", time: { created: 1 }, text: "key " + "sk-ant-" + "secret-key-1234567890" }]
  * findFirstSensitive(clean, "secrets") // => Option.none()
  * findFirstSensitive(leaked, "secrets") // => Option.some({ index: 0, label: "Anthropic API key" })
  * ```

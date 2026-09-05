@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { describe, expect } from "vitest"
 import {
   decode,
+  fakeKey,
   minimal,
   script,
   TestFiles,
@@ -145,7 +146,7 @@ describe("transfer", () => {
       expect(calls.create).toBe(0)
       expect(calls.synthetic).toBe(0)
     }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("hello"), userMsg("deploy with sk-ant-secret-key-1234567890")] })),
+      testLayer(script({ messages: [userMsg("hello"), userMsg("deploy with " + fakeKey)] })),
     )))
 
   it.effect("writes the raw file alone for export-file with sanitize false", () =>
@@ -169,7 +170,7 @@ describe("transfer", () => {
       const store = yield* storage.store
       expect(store.size).toBe(0)
     }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("deploy with sk-ant-secret-key-1234567890")] })),
+      testLayer(script({ messages: [userMsg("deploy with " + fakeKey)] })),
     )))
 
   it.effect("converts store defects into RenderFailed before relocate", () =>

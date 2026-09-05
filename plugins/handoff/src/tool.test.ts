@@ -7,7 +7,7 @@ import { Tool } from "@opencode-ai/schema/tool"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
 import { PointerPortable, TransferInputPortable } from "./rpc.js"
-import { minimal, script, testLayer, userMsg } from "./test-support.js"
+import { fakeKey, minimal, script, testLayer, userMsg } from "./test-support.js"
 import { Tools } from "./tool.js"
 
 const editor = () => {
@@ -66,7 +66,7 @@ describe("handoff_transfer tool", () => {
     Effect.gen(function* () {
       const fake = editor()
       Tools.register(fake.editor, testLayer(
-        script({ messages: [userMsg("deploy with sk-ant-secret-key-1234567890", "msg_1")] }),
+        script({ messages: [userMsg("deploy with " + fakeKey, "msg_1")] }),
       ))
       const definition = fake.added[0]
       if (definition === undefined) throw new Error("unreachable")
