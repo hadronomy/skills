@@ -1,5 +1,11 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.3.0
+
+### Minor Changes
+
+- [`4ad7b75`](https://github.com/hadronomy/skills/commit/4ad7b7562a0f0ff85fc8d907c4e356f107e871a0) Thanks [@hadronomy](https://github.com/hadronomy)! - Remove secret redaction. The `Redact` module, the `scan` intent field, and the `RedactRefused` error are gone; transfer is capture plus render. Sanitizing exports stays available through the host `sanitize` flag on export-file. The package is pre-1.0; update callers that send `scan` or handle `RedactRefused`.
+
 ## 0.2.3
 
 ### Patch Changes
