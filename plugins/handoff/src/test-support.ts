@@ -1,7 +1,7 @@
 // Shared doubles for transfer tests: Ref-backed host fakes behind test
 // layers, plus intent builders. Production code never imports this module.
 
-import type { SessionSyntheticInput } from "@opencode-ai/client/effect/api"
+import type { SessionDomain } from "@opencode-ai/plugin/effect/session"
 import { Session } from "@opencode-ai/schema/session"
 import { SessionInbox } from "@opencode-ai/schema/session-inbox"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
@@ -14,6 +14,11 @@ import { Transfer } from "./transfer.js"
 
 // Fake host records decode through the real host schemas, so the fakes
 // carry every required field and the encode boundary holds in tests.
+// Synthetic input flows from the gateway interface, not the client package:
+// the fake implements Host.SessionGateway, so the input type is whatever the
+// host declares. Naming it here keeps the probe and the Ref aligned.
+type SyntheticInput = Parameters<SessionDomain["synthetic"]>[0]
+
 export const T0 = 1_750_000_000_000
 export const userMsg = (text: string, id = "msg_1") =>
   Schema.decodeSync(SessionMessage.User)({ id, time: { created: T0 }, text, type: "user" })
@@ -84,7 +89,7 @@ export interface SessionCalls {
 
 export class TestSession extends Context.Service<TestSession, {
   readonly calls: Effect.Effect<SessionCalls>
-  readonly syntheticInputs: Effect.Effect<ReadonlyArray<SessionSyntheticInput>>
+  readonly syntheticInputs: Effect.Effect<ReadonlyArray<SyntheticInput>>
   readonly switched: Effect.Effect<{ agent: unknown; model: unknown }>
 }>()("Handoff/TestSession") {}
 
@@ -100,7 +105,7 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
         switchModel: 0,
       })
       const remainingContextFailures = yield* Ref.make(sessionScript.failContext)
-      const syntheticInputs = yield* Ref.make<Array<SessionSyntheticInput>>([])
+      const syntheticInputs = yield* Ref.make<Array<SyntheticInput>>([])
       const switched = yield* Ref.make<{ agent: unknown; model: unknown }>({ agent: undefined, model: undefined })
       const bump = (key: keyof SessionCalls) =>
         Ref.update(calls, (current) => ({ ...current, [key]: current[key] + 1 }))
@@ -135,7 +140,7 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
           yield* Ref.update(switched, (current) => ({ ...current, model: input.model }))
           if (sessionScript.failSwitch) return yield* new TransportFault({ message: "denied" })
         }),
-        synthetic: (input: SessionSyntheticInput) =>
+        synthetic: (input: SyntheticInput) =>
           Effect.gen(function* () {
             yield* bump("synthetic")
             yield* Ref.update(syntheticInputs, (current) => [...current, input])
