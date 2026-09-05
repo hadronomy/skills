@@ -53,16 +53,6 @@ export const Key = Schema.String.pipe(Schema.brand("Handoff.Key"))
 export type Key = typeof Key.Type
 
 /**
- * Scan depth. Secrets cover tokens, keys, and credentials. All adds
- * high-recall PII shapes, starting with emails.
- *
- * @category models
- * @since 0.2.0
- */
-export const Scan = Schema.Literals(["secrets", "all"])
-export type Scan = typeof Scan.Type
-
-/**
  * Artifact kind. Refs point at work items and files; they never paste
  * content.
  *
@@ -117,9 +107,6 @@ export const Intent = Schema.Struct({
   ),
   agent: Schema.optional(Agent.ID),
   model: Schema.optional(Model.Ref),
-  scan: Scan.pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed("secrets" as const)),
-  ),
   resume: Resume.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({ mode: "fork-local" } as const)),
   ),
@@ -195,18 +182,6 @@ export const Pointer = Schema.Union([ForkPointer, FilePointer])
 export type PointerType = Schema.Schema.Type<typeof Pointer>
 
 /**
- * Why redaction refused. v1 emits `secret`; `path` and `deny` stay reserved.
- *
- * @category models
- * @since 0.1.0
- */
-export const RedactCause = Schema.Struct({
-  reason: Schema.Literals(["secret", "path", "deny"]),
-  field: Schema.String,
-})
-export interface RedactCause extends Schema.Schema.Type<typeof RedactCause> {}
-
-/**
  * Capture read failed or found nothing to hand off.
  *
  * @category errors
@@ -215,18 +190,6 @@ export interface RedactCause extends Schema.Schema.Type<typeof RedactCause> {}
 export class CaptureFailed extends Schema.TaggedError<CaptureFailed>()(
   "CaptureFailed",
   { op: Schema.Literal("capture") },
-) {}
-
-/**
- * Redaction refused. The cause names the reason and the message pointer;
- * nothing was stored.
- *
- * @category errors
- * @since 0.1.0
- */
-export class RedactRefused extends Schema.TaggedError<RedactRefused>()(
-  "RedactRefused",
-  { op: Schema.Literal("redact"), cause: RedactCause },
 ) {}
 
 /**
@@ -379,7 +342,6 @@ export const Handoff = Rpc.define({
       output: PointerPortable,
       errors: {
         CaptureFailed: portable(CaptureFailed),
-        RedactRefused: portable(RedactRefused),
         RenderFailed: portable(RenderFailed),
       },
     },

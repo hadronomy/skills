@@ -7,7 +7,6 @@ import {
   Intent,
   Pointer,
   PointerPortable,
-  RedactRefused,
   RenderFailed,
   TransferInput,
   TransferInputPortable,
@@ -99,10 +98,9 @@ describe("rpc contract", () => {
     expect(out.directive).toBe("branch")
   })
 
-  it("defaults skills and scan, keeps agent and model optional", () => {
+  it("defaults skills, keeps agent and model optional", () => {
     const out = Schema.decodeSync(Intent)({ goal: "g", directive: "resume", refs: [] })
     expect(out.skills).toEqual([])
-    expect(out.scan).toBe("secrets")
     expect(out.agent).toBeUndefined()
     expect(out.model).toBeUndefined()
     const full = Schema.decodeSync(Intent)({
@@ -112,7 +110,6 @@ describe("rpc contract", () => {
       skills: ["review"],
       agent: "build",
       model: { providerID: "anthropic", id: "sonnet" },
-      scan: "all",
     })
     expect(full.skills).toEqual(["review"])
     expect(full.agent).toBe("build")
@@ -137,13 +134,7 @@ describe("rpc contract", () => {
     ).toThrow()
   })
 
-  it("carries typed errors with tag, op, and cause", () => {
-    const refused = new RedactRefused({
-      op: "redact",
-      cause: { reason: "secret", field: "messages[3]" },
-    })
-    expect(refused._tag).toBe("RedactRefused")
-    expect(refused.cause).toEqual({ reason: "secret", field: "messages[3]" })
+  it("carries typed errors with tag and op", () => {
     expect(new CaptureFailed({ op: "capture" })._tag).toBe("CaptureFailed")
     expect(new RenderFailed({ op: "render" })._tag).toBe("RenderFailed")
   })
@@ -155,7 +146,6 @@ describe("rpc contract", () => {
     expect(Handoff.methods.transfer.output).toBe(PointerPortable)
     expect(Object.keys(Handoff.methods.transfer.errors ?? {}).sort()).toEqual([
       "CaptureFailed",
-      "RedactRefused",
       "RenderFailed",
     ])
   })
@@ -172,7 +162,6 @@ describe("portable adapters", () => {
     const result = await TransferInputPortable["~standard"].validate(minimal)
     expect(result.issues).toBeUndefined()
     if (result.issues !== undefined) throw new Error("unreachable")
-    expect(result.value.intent.scan).toBe("secrets")
     if (result.value.intent.resume.mode !== "fork-local") throw new Error("unreachable")
     expect(result.value.intent.resume.boundary).toEqual({ type: "through" })
     expect(result.value.intent.resume.delivery).toBe("steer")
@@ -186,13 +175,13 @@ describe("portable adapters", () => {
     }
   })
 
-  it("round-trips refusal instances and pointers", async () => {
-    const refused = new RedactRefused({ op: "redact", cause: { reason: "secret", field: "messages[3]" } })
-    const adapter = Handoff.methods.transfer.errors?.["RedactRefused"]
+  it("round-trips error instances and pointers as plain JSON", async () => {
+    const failed = new CaptureFailed({ op: "capture" })
+    const adapter = Handoff.methods.transfer.errors?.["CaptureFailed"]
     if (adapter === undefined || !("~standard" in adapter)) throw new Error("unreachable")
-    const cause = await adapter["~standard"].validate(refused) as { issues?: unknown; value?: { cause: unknown } }
+    const cause = await adapter["~standard"].validate(failed) as { issues?: unknown; value?: { op: unknown } }
     expect(cause.issues).toBeUndefined()
-    expect(cause.value?.cause).toEqual({ reason: "secret", field: "messages[3]" })
+    expect(cause.value?.op).toBe("capture")
     expect(Object.getPrototypeOf(cause.value)).toBe(Object.prototype)
     const pointer = await PointerPortable["~standard"].validate({
       kind: "fork-local",

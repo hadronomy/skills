@@ -11,8 +11,7 @@ import { Transfer } from "./transfer.js"
  * spec, plan, adr, issue, commit, file; skills take invoked skill IDs.
  * Omit `resume` for fork-local defaults (steer delivery, whole session);
  * name `export-file` with an optional directory for cross-machine moves.
- * Omit agent and model to carry both over from the source session. A
- * refusal names the offending field: report it and stop, never retry it.
+ * Omit agent and model to carry both over from the source session.
  *
  * @category combinators
  * @since 0.2.0
@@ -38,12 +37,6 @@ export const register = (
         Effect.catchTags({
           CaptureFailed: () =>
             Effect.fail(new Tool.Error({ message: "capture failed: empty history or lost transport" })),
-          RedactRefused: (failure) =>
-            Effect.fail(
-              new Tool.Error({
-                message: `refused ${failure.cause.reason} at ${failure.cause.field}; clean the source and call again`,
-              }),
-            ),
           RenderFailed: () =>
             Effect.fail(
               new Tool.Error({ message: "render failed: stash, session, delivery, or file write failed" }),

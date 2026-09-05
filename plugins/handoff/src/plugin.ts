@@ -44,14 +44,6 @@ export default Plugin.define({
             Effect.catchTags({
               CaptureFailed: (failure) =>
                 Effect.fail(context.error("CaptureFailed", `capture failed for ${input.sessionID}`, failure)),
-              RedactRefused: (failure) =>
-                Effect.fail(
-                  context.error(
-                    "RedactRefused",
-                    `redact refused: ${failure.cause.reason} at ${failure.cause.field}`,
-                    failure,
-                  ),
-                ),
               RenderFailed: (failure) =>
                 Effect.fail(context.error("RenderFailed", `render failed for ${input.sessionID}`, failure)),
             }),
@@ -80,7 +72,6 @@ export default Plugin.define({
                 directive: "resume",
                 refs: Command.collectRefs(invocation.prompt.files),
                 skills: Command.collectSkills(invocation.prompt.skills),
-                scan: "secrets",
                 resume: {
                   mode: "fork-local",
                   boundary: { type: "through" },

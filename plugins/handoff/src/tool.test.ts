@@ -7,7 +7,7 @@ import { Tool } from "@opencode-ai/schema/tool"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
 import { PointerPortable, TransferInputPortable } from "./rpc.js"
-import { fakeKey, minimal, script, testLayer, userMsg } from "./test-support.js"
+import { minimal, testLayer } from "./test-support.js"
 import { Tools } from "./tool.js"
 
 const editor = () => {
@@ -62,16 +62,4 @@ describe("handoff_transfer tool", () => {
       })
     }))
 
-  it.effect("refuses secrets as a tool error naming the field", () =>
-    Effect.gen(function* () {
-      const fake = editor()
-      Tools.register(fake.editor, testLayer(
-        script({ messages: [userMsg("deploy with " + fakeKey, "msg_1")] }),
-      ))
-      const definition = fake.added[0]
-      if (definition === undefined) throw new Error("unreachable")
-      const failure = yield* Effect.flip(definition.execute(minimal(), context))
-      expect(failure).toBeInstanceOf(Tool.Error)
-      expect(failure.message).toContain("messages[0]")
-    }))
 })

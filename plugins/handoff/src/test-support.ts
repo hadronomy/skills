@@ -20,10 +20,6 @@ import { Transfer } from "./transfer.js"
 type SyntheticInput = Parameters<SessionDomain["synthetic"]>[0]
 
 export const T0 = 1_750_000_000_000
-
-// Built, not literal: a key-shaped literal here would trip the scanner in
-// any session reading this source. The parts never match on their own.
-export const fakeKey = "sk-ant-" + "secret-key-1234567890"
 export const userMsg = (text: string, id = "msg_1") =>
   Schema.decodeSync(SessionMessage.User)({ id, time: { created: T0 }, text, type: "user" })
 export const info = (id: string, identity = false) =>

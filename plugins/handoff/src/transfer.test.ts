@@ -3,14 +3,12 @@ import { Effect } from "effect"
 import { describe, expect } from "vitest"
 import {
   decode,
-  fakeKey,
   minimal,
   script,
   TestFiles,
   TestSession,
   TestStorage,
   testLayer,
-  userMsg,
   wireRoundTrip,
 } from "./test-support.js"
 import { Transfer } from "./transfer.js"
@@ -129,26 +127,6 @@ describe("transfer", () => {
       expect(calls.context).toBe(3)
     }).pipe(Effect.provide(testLayer(script({ failContext: 9 })))))
 
-  it.effect("refuses secrets and stores nothing", () =>
-    Effect.gen(function* () {
-      const handoff = yield* Transfer.Service
-      const session = yield* TestSession
-      const storage = yield* TestStorage
-      const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      if (failure._tag === "RedactRefused") {
-        expect(failure.cause).toEqual({ reason: "secret", field: "messages[1]" })
-      } else {
-        expect.unreachable(`wrong failure: ${failure._tag}`)
-      }
-      const store = yield* storage.store
-      expect(store.size).toBe(0)
-      const calls = yield* session.calls
-      expect(calls.create).toBe(0)
-      expect(calls.synthetic).toBe(0)
-    }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("hello"), userMsg("deploy with " + fakeKey)] })),
-    )))
-
   it.effect("writes the raw file alone for export-file with sanitize false", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
@@ -169,9 +147,7 @@ describe("transfer", () => {
       expect(written.has("/tmp/x/handoff-ses_abc.json")).toBe(true)
       const store = yield* storage.store
       expect(store.size).toBe(0)
-    }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("deploy with " + fakeKey)] })),
-    )))
+    }).pipe(Effect.provide(testLayer())))
 
   it.effect("converts store defects into RenderFailed before relocate", () =>
     Effect.gen(function* () {
@@ -311,25 +287,4 @@ describe("transfer", () => {
       expect(injected.text).not.toContain("Key handoff/")
     }).pipe(Effect.provide(testLayer())))
 
-  it.effect("refuses mail addresses under the all scan depth", () =>
-    Effect.gen(function* () {
-      const handoff = yield* Transfer.Service
-      const input = decode({
-        sessionID: "ses_abc",
-        intent: { goal: "audit", directive: "resume", refs: [], scan: "all" },
-      })
-      const failure = yield* Effect.flip(handoff.transfer(input))
-      expect(failure._tag).toBe("RedactRefused")
-    }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("contact jane@example.com for access")] })),
-    )))
-
-  it.effect("passes mail addresses under the default secrets scan", () =>
-    Effect.gen(function* () {
-      const handoff = yield* Transfer.Service
-      const pointer = yield* handoff.transfer(minimal())
-      expect(pointer.kind).toBe("fork-local")
-    }).pipe(Effect.provide(
-      testLayer(script({ messages: [userMsg("contact jane@example.com for access")] })),
-    )))
 })

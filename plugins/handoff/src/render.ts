@@ -103,9 +103,8 @@ export const layer: Layer.Layer<
         const count = captured.messages.length
         const resume = intent.resume
 
-        // The stash holds redacted-by-construction data: fork-local always
-        // scrubs, and export-file stashes only when sanitize holds. Raw
-        // export writes the file alone, with no side copy in storage.
+        // Fork-local always stashes; export-file stashes only when sanitize
+        // holds. Raw export writes the file alone, with no side copy.
         if (resume.mode === "fork-local" || resume.sanitize) {
           const stash = yield* orStageFailure(
             Schema.encodeEffect(Stash)({

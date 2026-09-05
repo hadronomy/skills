@@ -1,8 +1,8 @@
 # Handoff plugin
 
 One RPC method moves a session to a resumable pointer. Callers send a
-structured intent; the plugin captures history, redacts secrets, and renders
-a pointer. Fixes land in one module.
+structured intent; the plugin captures history and renders a pointer.
+Fixes land in one module.
 
 ## Install
 
@@ -34,11 +34,10 @@ For the guided version, copy `commands/handoff-interview.md` from the
 package into a `commands` directory. Then run `/handoff-interview`. The agent
 reads the session, asks through the question tool only for what context
 cannot answer, and calls the `handoff_transfer` tool once. The tool takes
-the transfer intent and returns the pointer. Refusals name the field.
+the transfer intent and returns the pointer.
 
-The intent carries `skills`, `agent`, `model`, `scan`, and typed `refs`.
-Skills default to empty. Scan defaults to `secrets`; `all` adds mail shapes.
-Agent and model stay absent unless set; the transfer fills both from the
+The intent carries `skills`, `agent`, `model`, and typed `refs`.
+Skills default to empty. Agent and model stay absent unless set; the transfer fills both from the
 source session. Refs take `spec`, `plan`, `adr`, `issue`, `commit`, or `file`.
 Session, stash-key, and next-session IDs are brands. All three travel as
 plain strings on the wire.
@@ -64,10 +63,9 @@ const ptr = await client.rpc(Handoff).transfer({
 
 Empty input fails validation before the handler runs.
 `Expected a value with a length of at least 1 at ["sessionID"]` names an
-empty session ID. The three stage errors cross the seam as typed failures:
+empty session ID. The two stage errors cross the seam as typed failures:
 
 - `CaptureFailed`: the history is empty or the transport failed after retries.
-- `RedactRefused`: secret shapes found; nothing is stored.
 - `RenderFailed`: the stash, session, delivery, or file write failed.
 
 ## Layout
@@ -79,9 +77,8 @@ src/tool.ts      agent-callable transfer tool surface
 src/host.ts      host boundary: session, storage, and file tags plus layers
 src/stage.ts     interrupt-preserving failure converter
 src/capture.ts   Capture service: history read over the gateway
-src/redact.ts    secret scan; self-namespace `Redact` bound at the end
 src/render.ts    Render service: stash plus preload or relocate
-src/transfer.ts  Handoff service composing the three stages
+src/transfer.ts  Handoff service composing the two stages
 src/plugin.ts    Plugin.define wiring: layers, RPC register, /handoff command
 src/index.ts     logic-free entry: default plugin plus contract re-exports
 ```
@@ -121,11 +118,10 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
   but the export envelope must stay import-compatible, which needs the
   session info. Both reads share the recurs(2) idempotent-read policy.
 - Export-file with `sanitize: false` writes the file alone and skips the
-  stash. Skipping redaction but keeping a side copy of raw secrets in
-  storage would break the spec's fail-closed rule the other way.
+  stash, so no side copy lands in storage.
 - `refs` are typed artifacts (`kind` plus `ref`), a breaking change over
   string refs. The package is pre-1.0; no migration path ships.
-- `skills` and `scan` default (`[]`, `secrets`); `agent` and `model` stay
+- `skills` defaults to `[]`; `agent` and `model` stay
   absent unless set.
 - Session IDs, stash keys, and next-session IDs are brands (`Session.ID`,
   `Handoff.Key`). All three encode as plain strings.
@@ -139,10 +135,6 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
 - `capture` reads `session.context` plus `session.get`. Empty context fails
   closed with no retry. Transport faults retry recurs(2); the reads are
   idempotent, so retry is safe.
-- `redact` scans every message for high-signal secret shapes and refuses
-  with `cause.reason` and `cause.field`. Nothing is stored on refusal.
-  The `all` scan depth adds mail shapes. The `path` and `deny` cause arms
-  stay reserved; v1 emits `secret` only.
 - `render` stashes under `handoff/<sessionID>` with a `handoff/latest`
   pointer write, then preloads the brief or relocates the file. Raw export
   (`sanitize: false`) skips the stash: the file is the only artifact. Only
