@@ -30,11 +30,11 @@ jobs:
       - run: bun install --frozen-lockfile
       # Opens or updates the version PR. Merging it bumps package.json,
       # syncs .claude-plugin/plugin.json, and writes CHANGELOG.md.
-      # The same step publishes to npm on merge. First release uses a
-      # NODE_AUTH_TOKEN secret (npm automation token, see below). After
-      # the package exists, add this repo and workflow as a trusted
-      # publisher on the package page at npmjs.com then drop the token
-      # and rely on OIDC (id-token permission stays for provenance).
+      # The same step publishes to npm on merge via OIDC trusted
+      # publishing (this repo and workflow are registered as a trusted
+      # publisher on the package page), so no token secret is needed.
+      # id-token permission above plus publishConfig.provenance give
+      # signed provenance attestations automatically.
       - uses: changesets/action@v1
         with:
           version: bun run version
@@ -43,4 +43,3 @@ jobs:
           publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
