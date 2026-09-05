@@ -3,11 +3,21 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Session handoff for OpenCode v2: one RPC transfer from intent to resumable pointer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hadronomy/skills.git",
+    "directory": "plugins/handoff"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "exports": {
     ".": "./index.ts",
-    "./rpc": "./src/rpc.ts"
+    "./rpc": "./src/rpc.ts",
+    "./package.json": "./package.json"
   },
-  "files": ["src"],
+  "files": ["src", "index.ts"],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

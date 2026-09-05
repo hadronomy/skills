@@ -6,15 +6,14 @@ a pointer. Fixes land in one module.
 
 ## Install
 
-Use the Git route for a fixed release. Use the local path to develop the
+Install the published package for daily use. Use the local path to develop the
 plugin.
 
 1. Run `opencode2 --version` to show the host version.
 2. If the host is older than beta-19086, upgrade the CLI to the `beta` tag.
-3. Run `opencode2 plugin add 'github:hadronomy/skills#<commit>::path:plugins/handoff'` to install a fixed release. Replace `<commit>` with the full commit hash.
-4. Run `opencode2 plugin list` to show the installed plugin.
-5. For local development, add the absolute workspace path to the `plugins` array in `opencode.jsonc`. The entry looks like `"/Users/hadronomy/repos/skills/plugins/handoff"`.
-6. Run `/handoff` in a session to start a handoff.
+3. Run `opencode2 plugin add '@hadronomy/opencode-handoff-plugin@0.1.0'` to install the package from the npm registry. The command also adds the entry to the `plugins` array in `opencode.jsonc`.
+4. For local development, add the absolute workspace path to the `plugins` array instead. The entry looks like `"/Users/hadronomy/repos/skills/plugins/handoff"`. The directory needs its root-level `index.ts` entry file; the loader ignores the `exports` map for local paths.
+5. Run `/handoff` in a session to start a handoff.
 
 ## Use
 
