@@ -1,6 +1,6 @@
 {
   "name": "@hadronomy/opencode-handoff-plugin",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Session handoff for OpenCode v2: one RPC transfer from intent to resumable pointer.",
   "repository": {

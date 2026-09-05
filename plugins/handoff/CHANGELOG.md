@@ -1,5 +1,11 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.3.1
+
+### Patch Changes
+
+- [`7479c65`](https://github.com/hadronomy/skills/commit/7479c6548d2f2d609940b928ae8359c905cc75c9) Thanks [@hadronomy](https://github.com/hadronomy)! - The `/handoff` command posts a start receipt before transferring, so long handoffs show progress instead of a bare spinner. Fork-local sessions now pass agent and model at create, dropping the two switch round trips.
+
 ## 0.3.0
 
 ### Minor Changes
