@@ -1,5 +1,11 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.2.1
+
+### Patch Changes
+
+- [`0dc94cc`](https://github.com/hadronomy/skills/commit/0dc94cc1a7c8f093cf30ee3465bae53f7dffbc1b) Thanks [@hadronomy](https://github.com/hadronomy)! - Fix every `/handoff` and `handoff_transfer` call failing at the host boundary. Method schemas now cross as Standard Schema adapters validated in the plugin's own Effect copy: the host decodes method schemas with its own Effect copy, whose interpreter defects on foreign schema ASTs, so raw schemas failed each call with `UnsupportedContentType` instead of validating it. The wire format is unchanged; the slash command now sends complete values instead of relying on decode defaults at the call site.
+
 ## 0.2.0
 
 ### Minor Changes
