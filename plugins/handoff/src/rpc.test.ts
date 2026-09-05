@@ -193,6 +193,7 @@ describe("portable adapters", () => {
     const cause = await adapter["~standard"].validate(refused) as { issues?: unknown; value?: { cause: unknown } }
     expect(cause.issues).toBeUndefined()
     expect(cause.value?.cause).toEqual({ reason: "secret", field: "messages[3]" })
+    expect(Object.getPrototypeOf(cause.value)).toBe(Object.prototype)
     const pointer = await PointerPortable["~standard"].validate({
       kind: "fork-local",
       key: "handoff/ses_abc",

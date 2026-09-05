@@ -314,7 +314,7 @@ export interface Stash extends Schema.Schema.Type<typeof Stash> {}
  * @category combinators
  * @since 0.2.1
  */
-export const portable = <S extends Schema.ConstraintDecoder<unknown>>(
+export const portable = <S extends Schema.Codec<unknown, unknown, never, never>>(
   schema: S,
 ): StandardSchemaV1<S["Type"], S["Type"]> => ({
   "~standard": {
@@ -323,13 +323,19 @@ export const portable = <S extends Schema.ConstraintDecoder<unknown>>(
     // Inference-only: never read at runtime.
     types: {} as StandardSchemaV1.Types<S["Type"], S["Type"]>,
     validate: (value: unknown) => {
-      // Exit, not Effect: validation stays synchronous, and the try keeps
+      // Exits, not Effects: validation stays synchronous, and the try keeps
       // even defects (never expected same-copy) as issues. Nothing escapes
-      // as a throw, so the host reports invalid_input, never a crash.
+      // as a throw, so the host reports invalid_input, never a crash. The
+      // encode-back returns the wire form: decode may build class instances
+      // (thrown error data), which the host JSON codec rejects, while the
+      // encoded form is plain JSON by construction. An unencodable value
+      // fails closed as issues.
       try {
-        const exit = Schema.decodeUnknownExit(schema)(value)
-        if (Exit.isSuccess(exit)) return { value: exit.value }
-        return { issues: [{ message: Cause.pretty(exit.cause) }] }
+        const decoded = Schema.decodeUnknownExit(schema)(value)
+        if (!Exit.isSuccess(decoded)) return { issues: [{ message: Cause.pretty(decoded.cause) }] }
+        const wire = Schema.encodeUnknownExit(schema)(decoded.value)
+        if (!Exit.isSuccess(wire)) return { issues: [{ message: Cause.pretty(wire.cause) }] }
+        return { value: wire.value }
       } catch (cause) {
         return { issues: [{ message: cause instanceof Error ? cause.message : String(cause) }] }
       }
