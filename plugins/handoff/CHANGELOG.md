@@ -1,5 +1,11 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.2.0
+
+### Minor Changes
+
+- [`965458b`](https://github.com/hadronomy/skills/commit/965458b974fb74e67040ade29006fee7121d5c11) Thanks [@hadronomy](https://github.com/hadronomy)! - Extend the handoff contract and command: `skills` passthrough, agent/model preservation, typed artifact refs, PII scan depth, branded IDs, Schema-proven write boundaries, and the `handoff_transfer` agent tool with the guided interview command. The slash command takes no flags; goal, delivery, refs, skills, agent, and model arrive from text and context. `refs` changes from strings to `{ kind, ref }` objects; update callers that send refs.
+
 ## 0.1.1
 
 ### Patch Changes
