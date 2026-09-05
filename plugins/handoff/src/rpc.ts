@@ -3,7 +3,8 @@ import { Model } from "@opencode-ai/schema/model"
 import { Session } from "@opencode-ai/schema/session"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Rpc } from "@opencode-ai/plugin/rpc"
-import { Effect, Schema } from "effect"
+import type { StandardSchemaV1 } from "@standard-schema/spec"
+import { Cause, Effect, Exit, Schema } from "effect"
 
 /**
  * Resume directive. Fork-local starts a fresh session and injects the brief.
@@ -289,11 +290,77 @@ export const Stash = Schema.Struct({
 export interface Stash extends Schema.Schema.Type<typeof Stash> {}
 
 /**
+ * Validates in this copy. The adapter carries no Effect `TypeId`, so the
+ * host skips its own decoder and runs `~standard.validate` here instead;
+ * every check, brand, and decode default executes against the copy that
+ * built the schema. Validation never throws: failures resolve to issues,
+ * which the host reports as `invalid_input`.
+ *
+ * **Example** (Complete input validates, garbage resolves to issues)
+ *
+ * ```ts import.meta.vitest
+ * import { TransferInputPortable } from "./rpc.js"
+ *
+ * const validate = TransferInputPortable["~standard"].validate
+ * const good = await validate({
+ *   sessionID: "ses_abc",
+ *   intent: { goal: "audit", directive: "resume", refs: [] }
+ * })
+ * good.issues // => undefined
+ * const bad = await validate({ sessionID: 42 })
+ * bad.issues !== undefined // => true
+ * ```
+ *
+ * @category combinators
+ * @since 0.2.1
+ */
+export const portable = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+): StandardSchemaV1<S["Type"], S["Type"]> => ({
+  "~standard": {
+    version: 1,
+    vendor: "@hadronomy/opencode-handoff-plugin",
+    // Inference-only: never read at runtime.
+    types: {} as StandardSchemaV1.Types<S["Type"], S["Type"]>,
+    validate: (value: unknown) => {
+      // Exit, not Effect: validation stays synchronous, and the try keeps
+      // even defects (never expected same-copy) as issues. Nothing escapes
+      // as a throw, so the host reports invalid_input, never a crash.
+      try {
+        const exit = Schema.decodeUnknownExit(schema)(value)
+        if (Exit.isSuccess(exit)) return { value: exit.value }
+        return { issues: [{ message: Cause.pretty(exit.cause) }] }
+      } catch (cause) {
+        return { issues: [{ message: cause instanceof Error ? cause.message : String(cause) }] }
+      }
+    },
+  },
+})
+
+/**
+ * Portable transfer input. Types stay symmetric: producers send complete
+ * values, and decode defaults remain a backstop for foreign callers only.
+ *
+ * @category models
+ * @since 0.2.1
+ */
+export const TransferInputPortable: StandardSchemaV1<TransferInput, TransferInput> = portable(TransferInput)
+
+/**
+ * Portable transfer pointer.
+ *
+ * @category models
+ * @since 0.2.1
+ */
+export const PointerPortable: StandardSchemaV1<PointerType, PointerType> = portable(Pointer)
+
+/**
  * Shared RPC contract: one method, the shapes above, the errors above.
  * Published through the `./rpc` export so callers import it without loading
- * the implementation. Raw Effect schemas travel here: the host accepts any
- * Standard Schema compatible validator, and `Rpc.define` is a passthrough
- * at runtime (it only rejects `rpc.*` error names).
+ * the implementation. Every face travels as a `portable` adapter, never a
+ * raw schema: the host decodes method schemas with its own Effect copy,
+ * whose interpreter defects on foreign ASTs, so raw schemas fail every call
+ * at the boundary instead of validating it.
  *
  * @category models
  * @since 0.1.0
@@ -302,9 +369,13 @@ export const Handoff = Rpc.define({
   id: "handoff",
   methods: {
     transfer: {
-      input: TransferInput,
-      output: Pointer,
-      errors: { CaptureFailed, RedactRefused, RenderFailed },
+      input: TransferInputPortable,
+      output: PointerPortable,
+      errors: {
+        CaptureFailed: portable(CaptureFailed),
+        RedactRefused: portable(RedactRefused),
+        RenderFailed: portable(RenderFailed),
+      },
     },
   },
   events: {},

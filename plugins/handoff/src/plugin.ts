@@ -80,7 +80,13 @@ export default Plugin.define({
                 directive: "resume",
                 refs: Command.collectRefs(invocation.prompt.files),
                 skills: Command.collectSkills(invocation.prompt.skills),
-                resume: { mode: "fork-local", delivery: invocation.delivery },
+                scan: "secrets",
+                resume: {
+                  mode: "fork-local",
+                  boundary: { type: "through" },
+                  delivery: invocation.delivery,
+                  resume: true,
+                },
               },
             })
             yield* ctx.session.synthetic({

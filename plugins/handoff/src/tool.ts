@@ -1,7 +1,7 @@
 import type { ToolEditor } from "@opencode-ai/plugin/effect/tool"
 import { Tool } from "@opencode-ai/schema/tool"
 import { Effect, Layer } from "effect"
-import { Pointer, TransferInput } from "./rpc.js"
+import { PointerPortable, TransferInputPortable } from "./rpc.js"
 import { Transfer } from "./transfer.js"
 
 /**
@@ -26,8 +26,8 @@ export const register = (
     name: "transfer",
     description:
       "Complete a session handoff from a structured intent and return a resumable pointer.",
-    input: TransferInput,
-    output: Pointer,
+    input: TransferInputPortable,
+    output: PointerPortable,
     options: { namespace: "handoff", codemode: false },
     execute: (input) =>
       Effect.gen(function* () {

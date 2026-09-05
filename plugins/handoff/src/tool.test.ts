@@ -6,7 +6,7 @@ import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Tool } from "@opencode-ai/schema/tool"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
-import { Pointer, TransferInput } from "./rpc.js"
+import { PointerPortable, TransferInputPortable } from "./rpc.js"
 import { minimal, script, testLayer, userMsg } from "./test-support.js"
 import { Tools } from "./tool.js"
 
@@ -43,8 +43,8 @@ describe("handoff_transfer tool", () => {
     expect(fake.namespaces).toEqual([{ name: "handoff", description: "Session handoff operations" }])
     expect(fake.added).toHaveLength(1)
     expect(fake.added[0]?.name).toBe("transfer")
-    expect(fake.added[0]?.input).toBe(TransferInput)
-    expect(fake.added[0]?.output).toBe(Pointer)
+    expect(fake.added[0]?.input).toBe(TransferInputPortable)
+    expect(fake.added[0]?.output).toBe(PointerPortable)
   })
 
   it.effect("completes a handoff through the tool seam", () =>

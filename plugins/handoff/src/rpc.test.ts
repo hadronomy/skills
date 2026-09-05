@@ -6,9 +6,11 @@ import {
   ForkPointer,
   Intent,
   Pointer,
+  PointerPortable,
   RedactRefused,
   RenderFailed,
   TransferInput,
+  TransferInputPortable,
 } from "./rpc.js"
 import { Handoff } from "./rpc.js"
 
@@ -149,12 +151,54 @@ describe("rpc contract", () => {
   it("registers the transfer method on the host seam", () => {
     expect(Handoff.id).toBe("handoff")
     expect(Object.keys(Handoff.methods)).toEqual(["transfer"])
-    expect(Handoff.methods.transfer.input).toBe(TransferInput)
-    expect(Handoff.methods.transfer.output).toBe(Pointer)
+    expect(Handoff.methods.transfer.input).toBe(TransferInputPortable)
+    expect(Handoff.methods.transfer.output).toBe(PointerPortable)
     expect(Object.keys(Handoff.methods.transfer.errors ?? {}).sort()).toEqual([
       "CaptureFailed",
       "RedactRefused",
       "RenderFailed",
     ])
+  })
+})
+
+describe("portable adapters", () => {
+  it("routes around foreign decoders: no TypeId, standard marker present", () => {
+    expect(Schema.isSchema(TransferInputPortable)).toBe(false)
+    expect("~standard" in TransferInputPortable).toBe(true)
+    expect(Schema.isSchema(PointerPortable)).toBe(false)
+  })
+
+  it("validates a complete input to a value with defaults filled", async () => {
+    const result = await TransferInputPortable["~standard"].validate(minimal)
+    expect(result.issues).toBeUndefined()
+    if (result.issues !== undefined) throw new Error("unreachable")
+    expect(result.value.intent.scan).toBe("secrets")
+    if (result.value.intent.resume.mode !== "fork-local") throw new Error("unreachable")
+    expect(result.value.intent.resume.boundary).toEqual({ type: "through" })
+    expect(result.value.intent.resume.delivery).toBe("steer")
+    expect(result.value.intent.resume.resume).toBe(true)
+  })
+
+  it("resolves garbage to issues instead of throwing", async () => {
+    for (const hostile of [null, 42, [], { sessionID: 42 }, { sessionID: "ses_abc", intent: null }]) {
+      const result = await TransferInputPortable["~standard"].validate(hostile)
+      expect(result.issues === undefined, JSON.stringify(hostile)).toBe(false)
+    }
+  })
+
+  it("round-trips refusal instances and pointers", async () => {
+    const refused = new RedactRefused({ op: "redact", cause: { reason: "secret", field: "messages[3]" } })
+    const adapter = Handoff.methods.transfer.errors?.["RedactRefused"]
+    if (adapter === undefined || !("~standard" in adapter)) throw new Error("unreachable")
+    const cause = await adapter["~standard"].validate(refused) as { issues?: unknown; value?: { cause: unknown } }
+    expect(cause.issues).toBeUndefined()
+    expect(cause.value?.cause).toEqual({ reason: "secret", field: "messages[3]" })
+    const pointer = await PointerPortable["~standard"].validate({
+      kind: "fork-local",
+      key: "handoff/ses_abc",
+      nextSessionID: "ses_def",
+      messages: 2,
+    })
+    expect(pointer.issues).toBeUndefined()
   })
 })
