@@ -1,3 +1,7 @@
+import { Agent } from "@opencode-ai/schema/agent"
+import { Model } from "@opencode-ai/schema/model"
+import { Session } from "@opencode-ai/schema/session"
+import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Rpc } from "@opencode-ai/plugin/rpc"
 import { Effect, Schema } from "effect"
 
@@ -38,6 +42,65 @@ export const Resume = Schema.Union([
 export type ResumeType = Schema.Schema.Type<typeof Resume>
 
 /**
+ * Stash key. Branded so session IDs and stash keys never mix at the type
+ * level; both travel as plain strings on the wire.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const Key = Schema.String.pipe(Schema.brand("Handoff.Key"))
+export type Key = typeof Key.Type
+
+/**
+ * Scan depth. Secrets cover tokens, keys, and credentials. All adds
+ * high-recall PII shapes, starting with emails.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const Scan = Schema.Literals(["secrets", "all"])
+export type Scan = typeof Scan.Type
+
+/**
+ * Artifact kind. Refs point at work items and files; they never paste
+ * content.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const ArtifactKind = Schema.Literals(["spec", "plan", "adr", "issue", "commit", "file"])
+export type ArtifactKind = typeof ArtifactKind.Type
+
+/**
+ * One referenced artifact: its kind plus a pointer (path, id, or hash).
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const ArtifactRef = Schema.Struct({
+  kind: ArtifactKind,
+  ref: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+})
+export interface ArtifactRef extends Schema.Schema.Type<typeof ArtifactRef> {}
+
+/**
+ * Maximum goal length, in characters. Owned here so the contract check and
+ * the command builder share one bound instead of drifting apart.
+ *
+ * @category configuration
+ * @since 0.2.0
+ */
+export const MaxGoalLength = 280
+
+/**
+ * Maximum refs per intent. Owned here for the same reason.
+ *
+ * @category configuration
+ * @since 0.2.0
+ */
+export const MaxRefs = 8
+
+/**
  * Structured intent. No free-text blob: the goal names the work, the
  * directive names the continuation, refs carry at most eight pointers.
  *
@@ -45,9 +108,17 @@ export type ResumeType = Schema.Schema.Type<typeof Resume>
  * @since 0.1.0
  */
 export const Intent = Schema.Struct({
-  goal: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(280))),
+  goal: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(MaxGoalLength))),
   directive: Schema.Literals(["resume", "branch", "queue"]),
-  refs: Schema.Array(Schema.String).pipe(Schema.check(Schema.isMaxLength(8))),
+  refs: Schema.Array(ArtifactRef).pipe(Schema.check(Schema.isMaxLength(MaxRefs))),
+  skills: Schema.Array(Schema.String).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([] as Array<string>)),
+  ),
+  agent: Schema.optional(Agent.ID),
+  model: Schema.optional(Model.Ref),
+  scan: Scan.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("secrets" as const)),
+  ),
   resume: Resume.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({ mode: "fork-local" } as const)),
   ),
@@ -79,7 +150,7 @@ export interface Intent extends Schema.Schema.Type<typeof Intent> {}
  * @since 0.1.0
  */
 export const TransferInput = Schema.Struct({
-  sessionID: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  sessionID: Session.ID.pipe(Schema.check(Schema.isMinLength(1))),
   intent: Intent,
 })
 export interface TransferInput extends Schema.Schema.Type<typeof TransferInput> {}
@@ -93,8 +164,8 @@ export interface TransferInput extends Schema.Schema.Type<typeof TransferInput> 
  */
 export const ForkPointer = Schema.Struct({
   kind: Schema.Literal("fork-local"),
-  key: Schema.String,
-  nextSessionID: Schema.String,
+  key: Key,
+  nextSessionID: Session.ID,
   messages: Schema.Finite,
 })
 export interface ForkPointer extends Schema.Schema.Type<typeof ForkPointer> {}
@@ -107,7 +178,7 @@ export interface ForkPointer extends Schema.Schema.Type<typeof ForkPointer> {}
  */
 export const FilePointer = Schema.Struct({
   kind: Schema.Literal("export-file"),
-  key: Schema.String,
+  key: Key,
   file: Schema.String,
   messages: Schema.Finite,
 })
@@ -167,6 +238,55 @@ export class RenderFailed extends Schema.TaggedError<RenderFailed>()(
   "RenderFailed",
   { op: Schema.Literal("render") },
 ) {}
+
+/**
+ * Brief metadata stored beside transfer data. The boundary already validated
+ * every value; this shape proves the file serializes.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const HandoffMeta = Schema.Struct({
+  key: Key,
+  goal: Schema.String,
+  directive: Schema.String,
+  refs: Schema.Array(ArtifactRef),
+  skills: Schema.Array(Schema.String),
+  brief: Schema.String,
+})
+export interface HandoffMeta extends Schema.Schema.Type<typeof HandoffMeta> {}
+
+/**
+ * Export-file envelope. `info` plus `messages` keep the file importable;
+ * `handoff` carries the brief metadata.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const Envelope = Schema.Struct({
+  info: Session.Info,
+  messages: Schema.Array(SessionMessage.Info),
+  handoff: HandoffMeta,
+})
+export interface Envelope extends Schema.Schema.Type<typeof Envelope> {}
+
+/**
+ * Stash record. Stored encoded: decoded host values carry class instances
+ * such as `DateTime`, which are not JSON, so the stash crosses the encode
+ * boundary like the export envelope. Decode with this schema on read.
+ *
+ * @category models
+ * @since 0.2.0
+ */
+export const Stash = Schema.Struct({
+  key: Key,
+  sessionID: Session.ID,
+  intent: Intent,
+  brief: Schema.String,
+  messages: Schema.Array(SessionMessage.Info),
+  info: Session.Info,
+})
+export interface Stash extends Schema.Schema.Type<typeof Stash> {}
 
 /**
  * Shared RPC contract: one method, the shapes above, the errors above.

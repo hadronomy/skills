@@ -1,187 +1,23 @@
 import { it } from "@effect/vitest"
-import type { SessionInbox } from "@opencode-ai/schema/session-inbox"
-import type { Session } from "@opencode-ai/schema/session"
-import type { SessionMessage } from "@opencode-ai/schema/session-message"
-import { Context, Effect, Layer, Ref, Schema } from "effect"
+import { Effect } from "effect"
 import { describe, expect } from "vitest"
-import { CaptureLive } from "./capture.js"
-import { Pointer, TransferInput, type PointerType } from "./rpc.js"
-import { RenderLive } from "./render.js"
-import { Host } from "./host.js"
-import { HandoffLive, HandoffService } from "./transfer.js"
-
-// Host-owned unions need one cast each at the fake factories below. The
-// transfer path itself never casts; it only counts, stringifies, and
-// forwards these values.
-const userMsg = (text: string) => ({ type: "user", text }) as unknown as SessionMessage.Info
-const info = (id: string) => ({ id }) as unknown as Session.Info
-const syntheticOut = () => ({}) as unknown as SessionInbox.Synthetic
-
-const decode = (input: unknown) => Schema.decodeUnknownSync(TransferInput)(input)
-
-const minimal = (goal = "audit") => decode({
-  sessionID: "ses_abc",
-  intent: { goal, directive: "resume", refs: [] as Array<string> },
-})
-
-interface SessionScript {
-  readonly messages: ReadonlyArray<SessionMessage.Info>
-  readonly failContext: number
-  readonly failGet: boolean
-  readonly failCreate: boolean
-  readonly failSynthetic: boolean
-  readonly nextID: string
-}
-
-const script = (overrides: Partial<SessionScript> = {}): SessionScript => ({
-  messages: [userMsg("hello"), userMsg("world")],
-  failContext: 0,
-  failGet: false,
-  failCreate: false,
-  failSynthetic: false,
-  nextID: "ses_next",
-  ...overrides,
-})
-
-class TransportFault extends Schema.TaggedError<TransportFault>()("TransportFault", {
-  message: Schema.String,
-}) {}
-
-interface SessionCalls {
-  readonly context: number
-  readonly get: number
-  readonly create: number
-  readonly synthetic: number
-}
-
-class TestSession extends Context.Service<TestSession, {
-  readonly calls: Effect.Effect<SessionCalls>
-  readonly syntheticInputs: Effect.Effect<ReadonlyArray<unknown>>
-}>()("Handoff/TestSession") {}
-
-const makeSessionTest = (sessionScript: SessionScript) =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const calls = yield* Ref.make<SessionCalls>({ context: 0, get: 0, create: 0, synthetic: 0 })
-      const remainingContextFailures = yield* Ref.make(sessionScript.failContext)
-      const syntheticInputs = yield* Ref.make<Array<unknown>>([])
-      const bump = (key: keyof SessionCalls) =>
-        Ref.update(calls, (current) => ({ ...current, [key]: current[key] + 1 }))
-
-      const gateway = Host.SessionGateway.of({
-        context: Effect.fn("Handoff.TestSession.context")(function* () {
-          yield* bump("context")
-          const remaining = yield* Ref.getAndUpdate(
-            remainingContextFailures,
-            (n) => Math.max(0, n - 1),
-          )
-          if (remaining > 0) return yield* new TransportFault({ message: "transport" })
-          return [...sessionScript.messages]
-        }),
-        get: Effect.fn("Handoff.TestSession.get")(function* () {
-          yield* bump("get")
-          if (sessionScript.failGet) return yield* new TransportFault({ message: "gone" })
-          return info("ses_abc")
-        }),
-        create: Effect.fn("Handoff.TestSession.create")(function* () {
-          yield* bump("create")
-          if (sessionScript.failCreate) return yield* new TransportFault({ message: "denied" })
-          return info(sessionScript.nextID)
-        }),
-        synthetic: (input: unknown) =>
-          Effect.gen(function* () {
-            yield* bump("synthetic")
-            yield* Ref.update(syntheticInputs, (current) => [...current, input])
-            if (sessionScript.failSynthetic) return yield* new TransportFault({ message: "busy" })
-            return syntheticOut()
-          }),
-      })
-
-      const probe = TestSession.of({
-        calls: Ref.get(calls),
-        syntheticInputs: Ref.get(syntheticInputs),
-      })
-      return Context.empty().pipe(
-        Context.add(Host.SessionGateway, gateway),
-        Context.add(TestSession, probe),
-      )
-    }),
-  )
-
-class TestStorage extends Context.Service<TestStorage, {
-  readonly store: Effect.Effect<ReadonlyMap<string, Schema.Json>>
-}>()("Handoff/TestStorage") {}
-
-const makeStorageTest = (opts: { dieSet?: boolean; blankGet?: boolean } = {}) =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const store = yield* Ref.make(new Map<string, Schema.Json>())
-      const gateway = Host.StorageGateway.of({
-        get: (key) => Ref.get(store).pipe(Effect.map((current) => current.get(key))),
-        set: (key, value) => {
-          if (opts.dieSet) return Effect.die(new TransportFault({ message: "disk" }))
-          if (opts.blankGet) return Effect.void
-          return Ref.update(store, (current) => new Map(current).set(key, value))
-        },
-        remove: (_key) => Effect.void,
-        scan: () => Effect.succeed({ entries: [] }),
-      })
-      const probe = TestStorage.of({ store: Ref.get(store) })
-      return Context.empty().pipe(
-        Context.add(Host.StorageGateway, gateway),
-        Context.add(TestStorage, probe),
-      )
-    }),
-  )
-
-class TestFiles extends Context.Service<TestFiles, {
-  readonly files: Effect.Effect<ReadonlyMap<string, string>>
-}>()("Handoff/TestFiles") {}
-
-const makeFilesTest = () =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const files = yield* Ref.make(new Map<string, string>())
-      const writer = Host.FileWriter.of({
-        write: (path, data) => Ref.update(files, (current) => new Map(current).set(path, data)),
-        tmpdir: () => "/tmp/handoff-test",
-      })
-      const probe = TestFiles.of({ files: Ref.get(files) })
-      return Context.empty().pipe(
-        Context.add(Host.FileWriter, writer),
-        Context.add(TestFiles, probe),
-      )
-    }),
-  )
-
-const testLayer = (
-  sessionScript: SessionScript = script(),
-  storageOpts: { dieSet?: boolean; blankGet?: boolean } = {},
-) => {
-  // Provide discards the fakes' outputs, so merge them back: the app sees
-  // the gateways while tests keep the probes. One shared reference means
-  // one memoized build, so both sides observe the same Refs.
-  const fakes = Layer.mergeAll(
-    makeSessionTest(sessionScript),
-    makeStorageTest(storageOpts),
-    makeFilesTest(),
-  )
-  const app = HandoffLive.pipe(
-    Layer.provide(Layer.mergeAll(CaptureLive, RenderLive)),
-    Layer.provide(fakes),
-  )
-  return Layer.mergeAll(app, fakes)
-}
-
-const wireRoundTrip = (pointer: PointerType) => {
-  const encoded = Schema.encodeSync(Pointer)(pointer)
-  return Schema.decodeUnknownSync(Pointer)(JSON.parse(JSON.stringify(encoded)))
-}
+import {
+  decode,
+  minimal,
+  script,
+  TestFiles,
+  TestSession,
+  TestStorage,
+  testLayer,
+  userMsg,
+  wireRoundTrip,
+} from "./test-support.js"
+import { Transfer } from "./transfer.js"
 
 describe("transfer", () => {
   it.effect("hands fork-local intent to a fresh session with the brief", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const storage = yield* TestStorage
       const pointer = yield* handoff.transfer(minimal())
@@ -198,7 +34,7 @@ describe("transfer", () => {
       const calls = yield* session.calls
       expect(calls.synthetic).toBe(1)
       const inputs = yield* session.syntheticInputs
-      const injected = inputs[0] as { delivery: string; resume: boolean; text: string }
+      const injected = inputs[0]
       expect(injected.delivery).toBe("steer")
       expect(injected.resume).toBe(true)
       expect(injected.text).toContain("audit")
@@ -206,7 +42,7 @@ describe("transfer", () => {
 
   it.effect("writes export-file transfer data with import-compatible top level", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const storage = yield* TestStorage
       const files = yield* TestFiles
@@ -241,7 +77,7 @@ describe("transfer", () => {
 
   it.effect("falls back to tmpdir when export names no directory", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const files = yield* TestFiles
       const input = decode({
         sessionID: "ses_abc",
@@ -260,7 +96,7 @@ describe("transfer", () => {
 
   it.effect("fails closed on empty context without retry", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const storage = yield* TestStorage
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
@@ -274,7 +110,7 @@ describe("transfer", () => {
 
   it.effect("retries transport faults twice, then hands off", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const pointer = yield* handoff.transfer(minimal())
       expect(pointer.kind).toBe("fork-local")
@@ -284,7 +120,7 @@ describe("transfer", () => {
 
   it.effect("stays a typed CaptureFailed after exhausted retries", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("CaptureFailed")
@@ -294,7 +130,7 @@ describe("transfer", () => {
 
   it.effect("refuses secrets and stores nothing", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const storage = yield* TestStorage
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
@@ -314,7 +150,7 @@ describe("transfer", () => {
 
   it.effect("writes the raw file alone for export-file with sanitize false", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const storage = yield* TestStorage
       const files = yield* TestFiles
       const input = decode({
@@ -338,7 +174,7 @@ describe("transfer", () => {
 
   it.effect("converts store defects into RenderFailed before relocate", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
@@ -348,7 +184,7 @@ describe("transfer", () => {
 
   it.effect("fails render when the stash verify-read comes back empty", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
@@ -358,7 +194,7 @@ describe("transfer", () => {
 
   it.effect("runs create once, with no retry", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
@@ -368,11 +204,131 @@ describe("transfer", () => {
 
   it.effect("runs synthetic delivery once, with no retry", () =>
     Effect.gen(function* () {
-      const handoff = yield* HandoffService
+      const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
       expect(failure._tag).toBe("RenderFailed")
       const calls = yield* session.calls
       expect(calls.synthetic).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ failSynthetic: true })))))
+
+  it.effect("carries agent and model over from the source session", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const pointer = yield* handoff.transfer(minimal())
+      expect(pointer.kind).toBe("fork-local")
+      const calls = yield* session.calls
+      expect(calls.switchAgent).toBe(1)
+      expect(calls.switchModel).toBe(1)
+      const switched = yield* session.switched
+      expect(switched.agent).toBe("build")
+      expect(switched.model).toEqual({ providerID: "anthropic", id: "sonnet" })
+    }).pipe(Effect.provide(testLayer(script({ identity: true })))))
+
+  it.effect("prefers explicit intent agent and model over source info", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: {
+          goal: "audit",
+          directive: "resume",
+          refs: [],
+          agent: "other",
+          model: { providerID: "other", id: "model" },
+        },
+      })
+      yield* handoff.transfer(input)
+      const switched = yield* session.switched
+      expect(switched.agent).toBe("other")
+      expect(switched.model).toEqual({ providerID: "other", id: "model" })
+    }).pipe(Effect.provide(testLayer(script({ identity: true })))))
+
+  it.effect("fails render when the agent switch fails, with no retry", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const failure = yield* Effect.flip(handoff.transfer(minimal()))
+      expect(failure._tag).toBe("RenderFailed")
+      const calls = yield* session.calls
+      expect(calls.switchAgent).toBe(1)
+      expect(calls.synthetic).toBe(0)
+    }).pipe(Effect.provide(testLayer(script({ identity: true, failSwitch: true })))))
+
+  it.effect("skips agent and model switches on export-file", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: { goal: "move", directive: "queue", refs: [], resume: { mode: "export-file" } },
+      })
+      const pointer = yield* handoff.transfer(input)
+      expect(pointer.kind).toBe("export-file")
+      const calls = yield* session.calls
+      expect(calls.switchAgent).toBe(0)
+      expect(calls.switchModel).toBe(0)
+    }).pipe(Effect.provide(testLayer(script({ identity: true })))))
+
+  it.effect("renders skills and referenced artifacts into the brief", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: {
+          goal: "audit",
+          directive: "resume",
+          refs: [{ kind: "plan", ref: "docs/plan.md" }],
+          skills: ["review"],
+        },
+      })
+      yield* handoff.transfer(input)
+      const inputs = yield* session.syntheticInputs
+      const injected = inputs[0]
+      expect(injected.text).toContain("Skills: review")
+      expect(injected.text).toContain("- plan: docs/plan.md")
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("opens the brief with admission and a resume directive, without the storage key", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: { goal: "audit", directive: "resume", refs: [] },
+      })
+      yield* handoff.transfer(input)
+      const inputs = yield* session.syntheticInputs
+      const injected = inputs[0]
+      const lines = injected.text.split("\n")
+      expect(lines[0]).toBe("You are resuming work handed off from another session.")
+      expect(lines[1]).toBe("Handoff: audit")
+      expect(lines[2]).toContain("Resume: steer with the brief, then resume the work below")
+      expect(injected.text).not.toContain("Key handoff/")
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("refuses mail addresses under the all scan depth", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: { goal: "audit", directive: "resume", refs: [], scan: "all" },
+      })
+      const failure = yield* Effect.flip(handoff.transfer(input))
+      expect(failure._tag).toBe("RedactRefused")
+    }).pipe(Effect.provide(
+      testLayer(script({ messages: [userMsg("contact jane@example.com for access")] })),
+    )))
+
+  it.effect("passes mail addresses under the default secrets scan", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const pointer = yield* handoff.transfer(minimal())
+      expect(pointer.kind).toBe("fork-local")
+    }).pipe(Effect.provide(
+      testLayer(script({ messages: [userMsg("contact jane@example.com for access")] })),
+    )))
 })

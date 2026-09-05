@@ -11,9 +11,8 @@
     },
     "plugins/handoff": {
       "name": "@hadronomy/opencode-handoff-plugin",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
-        "@opencode-ai/client": "0.0.0-beta-19086",
         "@opencode-ai/plugin": "0.0.0-beta-19086",
         "@opencode-ai/schema": "0.0.0-beta-19086",
         "effect": "4.0.0-rc.112",

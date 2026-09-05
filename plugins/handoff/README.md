@@ -24,7 +24,26 @@ Slash command in any session:
 ```
 
 The command builds the intent and calls `transfer` once, then posts the
-pointer as a queued receipt in the source session. Same call over HTTP:
+pointer as a queued receipt in the source session. Text after `/handoff`
+becomes the goal. Bare `/handoff` falls back to the session title, then to
+a standing label. Delivery, attachments, skills, agent, and model arrive
+from context, so the command takes no flags. Anything vaguer belongs to
+the guided version below.
+
+For the guided version, copy `commands/handoff-interview.md` from the
+package into a `commands` directory. Then run `/handoff-interview`. The agent
+reads the session, asks through the question tool only for what context
+cannot answer, and calls the `handoff_transfer` tool once. The tool takes
+the transfer intent and returns the pointer. Refusals name the field.
+
+The intent carries `skills`, `agent`, `model`, `scan`, and typed `refs`.
+Skills default to empty. Scan defaults to `secrets`; `all` adds mail shapes.
+Agent and model stay absent unless set; the transfer fills both from the
+source session. Refs take `spec`, `plan`, `adr`, `issue`, `commit`, or `file`.
+Session, stash-key, and next-session IDs are brands. All three travel as
+plain strings on the wire.
+
+Same call over HTTP:
 
 ```text
 POST /api/rpc/handoff/transfer
@@ -41,10 +60,22 @@ const ptr = await client.rpc(Handoff).transfer({
 // out.file -> move the file, then: opencode2 import --directory ./newdir <file>
 ```
 
+## Failures
+
+Empty input fails validation before the handler runs.
+`Expected a value with a length of at least 1 at ["sessionID"]` names an
+empty session ID. The three stage errors cross the seam as typed failures:
+
+- `CaptureFailed`: the history is empty or the transport failed after retries.
+- `RedactRefused`: secret shapes found; nothing is stored.
+- `RenderFailed`: the stash, session, delivery, or file write failed.
+
 ## Layout
 
 ```text
-src/rpc.ts       transfer contract: shapes, errors, and the define
+src/rpc.ts       transfer contract: shapes, bounds, errors, and the define
+src/command.ts    command input builders, namespaced as `Command`
+src/tool.ts      agent-callable transfer tool surface
 src/host.ts      host boundary: session, storage, and file tags plus layers
 src/stage.ts     interrupt-preserving failure converter
 src/capture.ts   Capture service: history read over the gateway
@@ -92,6 +123,16 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
 - Export-file with `sanitize: false` writes the file alone and skips the
   stash. Skipping redaction but keeping a side copy of raw secrets in
   storage would break the spec's fail-closed rule the other way.
+- `refs` are typed artifacts (`kind` plus `ref`), a breaking change over
+  string refs. The package is pre-1.0; no migration path ships.
+- `skills` and `scan` default (`[]`, `secrets`); `agent` and `model` stay
+  absent unless set.
+- Session IDs, stash keys, and next-session IDs are brands (`Session.ID`,
+  `Handoff.Key`). All three encode as plain strings.
+- Agent and model carry over from source info unless the intent names
+  replacements. A server fork preserves the same pair.
+- Pointers and the envelope encode through Schema before return or write;
+  malformed output is unreturnable.
 
 ## Stage policy
 
@@ -100,7 +141,8 @@ the installed toolchain proves otherwise (effect 4.0.0-rc.112,
   idempotent, so retry is safe.
 - `redact` scans every message for high-signal secret shapes and refuses
   with `cause.reason` and `cause.field`. Nothing is stored on refusal.
-  The `path` and `deny` cause arms stay reserved; v1 emits `secret` only.
+  The `all` scan depth adds mail shapes. The `path` and `deny` cause arms
+  stay reserved; v1 emits `secret` only.
 - `render` stashes under `handoff/<sessionID>` with a `handoff/latest`
   pointer write, then preloads the brief or relocates the file. Raw export
   (`sanitize: false`) skips the stash: the file is the only artifact. Only

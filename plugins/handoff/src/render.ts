@@ -1,8 +1,7 @@
-import type { SessionImportInput } from "@opencode-ai/client/effect/api"
 import { Context, Effect, Layer, Match, Schedule, Schema } from "effect"
-import type { Captured } from "./capture.js"
+import type { Capture } from "./capture.js"
 import type { Intent, PointerType, TransferInput } from "./rpc.js"
-import { RenderFailed } from "./rpc.js"
+import { Envelope, Key, Pointer, RenderFailed, Stash } from "./rpc.js"
 import { Host } from "./host.js"
 import { orStageFailure } from "./stage.js"
 
@@ -14,7 +13,18 @@ const gate = Effect.fn("Handoff.render.gate")(function* (value: unknown) {
   )
 })
 
-const brief = (sessionID: string, intent: Intent, captured: Captured): string => {
+// A malformed pointer or envelope is unreturnable, not just untested.
+const prove = Effect.fn("Handoff.render.prove")(function* (pointer: PointerType) {
+  const wire = yield* Schema.encodeEffect(Pointer)(pointer)
+  return yield* Schema.decodeEffect(Pointer)(wire)
+})
+
+// Admission prefix, mirroring the house subagent line ("You are a subagent
+// spawned by another session."). The fresh session starts with empty
+// context, so the first line names that state before the task text.
+const ADMISSION = "You are resuming work handed off from another session."
+
+const brief = (sessionID: string, intent: Intent, captured: Capture.Captured): string => {
   const where = Match.value(intent.resume).pipe(
     Match.discriminator("mode")("export-file", () => "export-file"),
     Match.discriminator("mode")("fork-local", (arm) =>
@@ -25,12 +35,30 @@ const brief = (sessionID: string, intent: Intent, captured: Captured): string =>
       )),
     Match.exhaustive,
   )
-  const refs = intent.refs.length > 0 ? intent.refs.join(", ") : "none"
+  // The stash key stays out of agent-visible text; it travels in the
+  // stash record and the pointer, which the fresh session cannot read.
+  const resume = Match.value(intent.resume).pipe(
+    Match.discriminator("mode")(
+      "export-file",
+      () => `Resume: import the transfer file, then ${intent.directive} the work below`,
+    ),
+    Match.discriminator("mode")(
+      "fork-local",
+      (arm) =>
+        `Resume: ${arm.delivery === "queue" ? "read the queued brief, then" : "steer with the brief, then"} ${intent.directive} the work below · ${captured.messages.length} messages from ${sessionID} · boundary ${where}`,
+    ),
+    Match.exhaustive,
+  )
+  const skills = intent.skills.length > 0 ? intent.skills.join(", ") : "none"
+  const artifacts = intent.refs.length > 0
+    ? ["Artifacts:", ...intent.refs.map((ref) => `- ${ref.kind}: ${ref.ref}`)]
+    : ["Artifacts: none"]
   return [
+    ADMISSION,
     `Handoff: ${intent.goal}`,
-    `Directive ${intent.directive} · ${captured.messages.length} messages from ${sessionID} · boundary ${where}`,
-    `Refs: ${refs}`,
-    `Key handoff/${sessionID}. Continue the work above.`,
+    resume,
+    `Skills: ${skills}`,
+    ...artifacts,
   ].join("\n")
 }
 
@@ -41,12 +69,12 @@ const brief = (sessionID: string, intent: Intent, captured: Captured): string =>
  * and the file write run once.
  *
  * @category services
- * @since 0.1.0
+ * @since 0.2.0
  */
-export class Render extends Context.Service<Render, {
+export class Service extends Context.Service<Service, {
   readonly pointer: (
     input: TransferInput,
-    captured: Captured,
+    captured: Capture.Captured,
   ) => Effect.Effect<PointerType, RenderFailed>
 }>()("@hadronomy/handoff/Render") {}
 
@@ -54,23 +82,23 @@ export class Render extends Context.Service<Render, {
  * Serves render from storage, session, and file gateways.
  *
  * @category layers
- * @since 0.1.0
+ * @since 0.2.0
  */
-export const RenderLive: Layer.Layer<
-  Render,
+export const layer: Layer.Layer<
+  Service,
   never,
   Host.StorageGateway | Host.SessionGateway | Host.FileWriter
 > = Layer.effect(
-  Render,
+  Service,
   Effect.gen(function* () {
     const storage = yield* Host.StorageGateway
     const session = yield* Host.SessionGateway
     const files = yield* Host.FileWriter
     return {
-      pointer: Effect.fn("Handoff.render")(function* (input: TransferInput, captured: Captured) {
+      pointer: Effect.fn("Handoff.render")(function* (input: TransferInput, captured: Capture.Captured) {
         const sessionID = input.sessionID
         const intent = input.intent
-        const key = `handoff/${sessionID}`
+        const key = Key.make(`handoff/${sessionID}`)
         const text = brief(sessionID, intent, captured)
         const count = captured.messages.length
         const resume = intent.resume
@@ -79,17 +107,22 @@ export const RenderLive: Layer.Layer<
         // scrubs, and export-file stashes only when sanitize holds. Raw
         // export writes the file alone, with no side copy in storage.
         if (resume.mode === "fork-local" || resume.sanitize) {
-          yield* orStageFailure(
-            gate({
+          const stash = yield* orStageFailure(
+            Schema.encodeEffect(Stash)({
               key,
               sessionID,
               intent,
               brief: text,
               messages: captured.messages,
               info: captured.info,
-            }).pipe(Effect.flatMap((stash) => storage.set(key, stash))),
+            }),
             renderFailed,
           )
+          // Encoded structs keep optional keys, which never satisfy the
+          // Json index signature at the type level. The gate re-proves
+          // plain JSON-ness and yields the Json type storage demands.
+          const json = yield* gate(stash)
+          yield* orStageFailure(storage.set(key, json), renderFailed)
           const seen = yield* orStageFailure(
             storage.get(key).pipe(Effect.retry(Schedule.recurs(2))),
             renderFailed,
@@ -105,31 +138,50 @@ export const RenderLive: Layer.Layer<
               const directory = arm.directory ?? files.tmpdir()
               const safe = sessionID.replace(/[^A-Za-z0-9_-]/g, "_")
               const file = `${directory}/handoff-${safe}.json`
-              const envelope = yield* gate({
-                ...{
+              const envelope = yield* orStageFailure(
+                Schema.encodeEffect(Envelope)({
                   info: captured.info,
                   messages: captured.messages,
-                } satisfies SessionImportInput,
-                handoff: {
-                  key,
-                  goal: intent.goal,
-                  directive: intent.directive,
-                  refs: intent.refs,
-                  brief: text,
-                },
-              })
+                  handoff: {
+                    key,
+                    goal: intent.goal,
+                    directive: intent.directive,
+                    refs: intent.refs,
+                    skills: intent.skills,
+                    brief: text,
+                  },
+                }),
+                renderFailed,
+              )
               yield* orStageFailure(files.write(file, JSON.stringify(envelope, null, 2)), renderFailed)
-              return { kind: "export-file", key, file, messages: count } as const
+              const pointer: PointerType = { kind: "export-file", key, file, messages: count }
+              return yield* orStageFailure(prove(pointer), renderFailed)
             })),
           Match.discriminator("mode")("fork-local", (arm) =>
-            // No fork on the plugin context in beta-19086, so both
-            // boundaries start a fresh session with the brief. The boundary
-            // stays recorded in the stash.
+            // No fork on the plugin context in beta, so both boundaries
+            // start a fresh session with the brief. The boundary stays
+            // recorded in the stash. Agent and model carry over from the
+            // source session unless the intent names replacements, mirroring
+            // what a server fork preserves.
             Effect.gen(function* () {
               const next = yield* orStageFailure(
                 session.create({ title: intent.goal.slice(0, 120) }),
                 renderFailed,
               )
+              const agent = intent.agent ?? captured.info.agent
+              if (agent !== undefined) {
+                yield* orStageFailure(
+                  session.switchAgent({ sessionID: next.id, agent }),
+                  renderFailed,
+                )
+              }
+              const model = intent.model ?? captured.info.model
+              if (model !== undefined) {
+                yield* orStageFailure(
+                  session.switchModel({ sessionID: next.id, model }),
+                  renderFailed,
+                )
+              }
               yield* orStageFailure(
                 session.synthetic({
                   sessionID: next.id,
@@ -141,7 +193,8 @@ export const RenderLive: Layer.Layer<
                 }),
                 renderFailed,
               )
-              return { kind: "fork-local", key, nextSessionID: next.id, messages: count } as const
+              const pointer: PointerType = { kind: "fork-local", key, nextSessionID: next.id, messages: count }
+              return yield* orStageFailure(prove(pointer), renderFailed)
             })),
           Match.exhaustive,
         )
@@ -149,3 +202,5 @@ export const RenderLive: Layer.Layer<
     }
   }),
 )
+
+export * as Render from "./render.js"

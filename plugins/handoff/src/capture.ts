@@ -1,4 +1,4 @@
-import { Session } from "@opencode-ai/schema/session"
+import type { Session } from "@opencode-ai/schema/session"
 import type { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Context, Effect, Layer, Schedule } from "effect"
 import { CaptureFailed } from "./rpc.js"
@@ -22,28 +22,27 @@ export interface Captured {
  * transport faults, which is safe because both reads are idempotent.
  *
  * @category services
- * @since 0.1.0
+ * @since 0.2.0
  */
-export class Capture extends Context.Service<Capture, {
-  readonly read: (sessionID: string) => Effect.Effect<Captured, CaptureFailed>
+export class Service extends Context.Service<Service, {
+  readonly read: (sessionID: Session.ID) => Effect.Effect<Captured, CaptureFailed>
 }>()("@hadronomy/handoff/Capture") {}
 
 /**
  * Serves capture from the session gateway.
  *
  * @category layers
- * @since 0.1.0
+ * @since 0.2.0
  */
-export const CaptureLive: Layer.Layer<Capture, never, Host.SessionGateway> = Layer.effect(
-  Capture,
+export const layer: Layer.Layer<Service, never, Host.SessionGateway> = Layer.effect(
+  Service,
   Effect.gen(function* () {
     const gateway = yield* Host.SessionGateway
     return {
-      read: Effect.fn("Handoff.capture")(function* (sessionID: string) {
-        const id = Session.ID.make(sessionID)
+      read: Effect.fn("Handoff.capture")(function* (sessionID: Session.ID) {
         const [messages, info] = yield* orStageFailure(
           Effect.all(
-            [gateway.context({ sessionID: id }), gateway.get({ sessionID: id })],
+            [gateway.context({ sessionID }), gateway.get({ sessionID })],
             { concurrency: 2 },
           ).pipe(Effect.retry(Schedule.recurs(2))),
           () => new CaptureFailed({ op: "capture" }),
@@ -54,3 +53,5 @@ export const CaptureLive: Layer.Layer<Capture, never, Host.SessionGateway> = Lay
     }
   }),
 )
+
+export * as Capture from "./capture.js"

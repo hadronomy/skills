@@ -17,9 +17,9 @@ import { Redact } from "./redact.js"
  * never lands a side copy in storage.
  *
  * @category services
- * @since 0.1.0
+ * @since 0.2.0
  */
-export class HandoffService extends Context.Service<HandoffService, {
+export class Service extends Context.Service<Service, {
   readonly transfer: (
     input: TransferInput,
   ) => Effect.Effect<PointerType, CaptureFailed | RedactRefused | RenderFailed>
@@ -29,20 +29,21 @@ export class HandoffService extends Context.Service<HandoffService, {
  * Serves the handoff from the capture and render stages.
  *
  * @category layers
- * @since 0.1.0
+ * @since 0.2.0
  */
-export const HandoffLive: Layer.Layer<HandoffService, never, Capture | Render> = Layer.effect(
-  HandoffService,
+export const layer: Layer.Layer<Service, never, Capture.Service | Render.Service> = Layer.effect(
+  Service,
   Effect.gen(function* () {
-    const capture = yield* Capture
-    const render = yield* Render
+    const capture = yield* Capture.Service
+    const render = yield* Render.Service
     return {
       transfer: Effect.fn("Handoff.transfer")(function* (input: TransferInput) {
         const captured = yield* capture.read(input.sessionID)
+        const scan = input.intent.scan
         const scrubbed = yield* Match.value(input.intent.resume).pipe(
-          Match.discriminator("mode")("fork-local", () => Redact.scrub(captured)),
+          Match.discriminator("mode")("fork-local", () => Redact.scrub(captured, scan)),
           Match.discriminator("mode")("export-file", (arm) =>
-            arm.sanitize ? Redact.scrub(captured) : Effect.succeed(captured)),
+            arm.sanitize ? Redact.scrub(captured, scan) : Effect.succeed(captured)),
           Match.exhaustive,
         )
         return yield* render.pointer(input, scrubbed)
@@ -50,3 +51,5 @@ export const HandoffLive: Layer.Layer<HandoffService, never, Capture | Render> =
     }
   }),
 )
+
+export * as Transfer from "./transfer.js"

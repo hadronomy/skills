@@ -14,7 +14,7 @@ import { Handoff } from "./rpc.js"
 
 const minimal = {
   sessionID: "ses_abc",
-  intent: { goal: "audit", directive: "resume", refs: [] as Array<string> },
+  intent: { goal: "audit", directive: "resume", refs: [] },
 }
 
 describe("rpc contract", () => {
@@ -42,7 +42,7 @@ describe("rpc contract", () => {
       { ...minimal, intent: { ...minimal.intent, goal: "" } },
       { ...minimal, intent: { ...minimal.intent, goal: "x".repeat(281) } },
       { ...minimal, sessionID: "" },
-      { ...minimal, intent: { ...minimal.intent, refs: Array(9).fill("r") } },
+      { ...minimal, intent: { ...minimal.intent, refs: Array(9).fill({ kind: "file", ref: "r" } as const) } },
       { ...minimal, intent: { ...minimal.intent, directive: "nap" } },
       {
         ...minimal,
@@ -93,8 +93,46 @@ describe("rpc contract", () => {
   })
 
   it("keeps goal and refs limits on intent", () => {
-    const out = Schema.decodeSync(Intent)({ goal: "g", directive: "branch", refs: ["a"] })
+    const out = Schema.decodeSync(Intent)({ goal: "g", directive: "branch", refs: [{ kind: "file", ref: "a" }] })
     expect(out.directive).toBe("branch")
+  })
+
+  it("defaults skills and scan, keeps agent and model optional", () => {
+    const out = Schema.decodeSync(Intent)({ goal: "g", directive: "resume", refs: [] })
+    expect(out.skills).toEqual([])
+    expect(out.scan).toBe("secrets")
+    expect(out.agent).toBeUndefined()
+    expect(out.model).toBeUndefined()
+    const full = Schema.decodeSync(Intent)({
+      goal: "g",
+      directive: "resume",
+      refs: [],
+      skills: ["review"],
+      agent: "build",
+      model: { providerID: "anthropic", id: "sonnet" },
+      scan: "all",
+    })
+    expect(full.skills).toEqual(["review"])
+    expect(full.agent).toBe("build")
+    expect(full.model).toEqual({ providerID: "anthropic", id: "sonnet" })
+  })
+
+  it("rejects unknown artifact kinds, empty refs, and non-finite counts", () => {
+    const base = { goal: "g", directive: "resume", refs: [{ kind: "file", ref: "a" }] }
+    expect(() =>
+      Schema.decodeUnknownSync(Intent)({ ...base, refs: [{ kind: "tweet", ref: "a" }] })
+    ).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(Intent)({ ...base, refs: [{ kind: "file", ref: "" }] })
+    ).toThrow()
+    expect(() =>
+      Schema.decodeSync(Pointer)({
+        kind: "fork-local",
+        key: "handoff/ses_abc",
+        nextSessionID: "ses_def",
+        messages: Number.NaN,
+      })
+    ).toThrow()
   })
 
   it("carries typed errors with tag, op, and cause", () => {
