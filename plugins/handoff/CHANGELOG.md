@@ -1,5 +1,21 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.5.0
+
+### Minor Changes
+
+- [#12](https://github.com/hadronomy/skills/pull/12) [`9151a73`](https://github.com/hadronomy/skills/commit/9151a7311251a161b0eb7f60fa18e53f7c56c24e) Thanks [@hadronomy](https://github.com/hadronomy)! - The brief now carries the work. Render condenses the source conversation with the model that session was using, and the new session reads that instead of a message count and a session ID it cannot open. A failed model call falls back to the tail of the conversation verbatim and logs a warning, so a handoff never lands with nothing to resume from. Reasoning and tool parts stay out of the brief: they are the model talking to itself. The boundary, the message count, the stash key, and the source session ID leave the agent-visible text and stay in the stash and the pointer.
+
+  Bare `/handoff` falls back to the session title, then to the last thing you asked for, then to a standing label. A session titles itself a few seconds after its first reply, so a handoff started before that used to name no work at all.
+
+### Patch Changes
+
+- [#12](https://github.com/hadronomy/skills/pull/12) [`9151a73`](https://github.com/hadronomy/skills/commit/9151a7311251a161b0eb7f60fa18e53f7c56c24e) Thanks [@hadronomy](https://github.com/hadronomy)! - `handoff_transfer` registers again. The host converts a tool shape to JSON Schema to show a model, and it rejected the `portable` adapter with `Schema vendor "@hadronomy/opencode-handoff-plugin" does not support JSON Schema conversion`, so the tool never reached an agent and `/handoff-interview` did nothing. The tool now publishes generated JSON Schema and decodes its own input.
+
+  A third event, `failed`, carries the source session and the sentence that says why a handoff stopped. The slash command executor returns void, so a stopped handoff had no way to reach a watching client. The command posts nothing back into the source session now: two synthetic receipts used to land in its inbox, where the client renders the description and never the text.
+
+- [#12](https://github.com/hadronomy/skills/pull/12) [`9151a73`](https://github.com/hadronomy/skills/commit/9151a7311251a161b0eb7f60fa18e53f7c56c24e) Thanks [@hadronomy](https://github.com/hadronomy)! - The terminal client entrypoint loads. It imported `@opencode-ai/plugin/tui`, whose barrel re-exports its Solid bindings and pulls in `solid-js`, an optional peer a published install does not carry. The import threw before any plugin code ran, so no handoff ever opened its new session. The deep path `@opencode-ai/plugin/tui/plugin` is the same `define` with no runtime imports.
+
 ## 0.4.0
 
 ### Minor Changes
