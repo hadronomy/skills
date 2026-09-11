@@ -1,8 +1,8 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { Receipt } from "./receipt.js"
+import { MaxOriginLength, Receipt } from "./receipt.js"
 import type { CaptureReason, RenderReason } from "./rpc.js"
-import { announce, CaptureFailed, Pointer, RenderFailed } from "./rpc.js"
+import { announce, CaptureFailed, keyFor, Pointer, RenderFailed, sessionOfKey } from "./rpc.js"
 import { decode } from "./test-support.js"
 
 const pointer = (value: unknown) => Schema.decodeUnknownSync(Pointer)(value)
@@ -12,6 +12,38 @@ const file = pointer({
   key: "handoff/ses_abc",
   file: "/tmp/handoff-ses_abc.json",
   messages: 12,
+})
+
+describe("Receipt.origin", () => {
+  it("names the source session on the chip the host renders", () => {
+    expect(Receipt.origin("Casual greeting check-in", "audit"))
+      .toBe('handoff from "Casual greeting check-in"')
+  })
+
+  it("falls back to the goal, because a young session has no title", () => {
+    expect(Receipt.origin(undefined, "fix the parser")).toBe('handoff from "fix the parser"')
+    expect(Receipt.origin("   ", "fix the parser")).toBe('handoff from "fix the parser"')
+  })
+
+  it("truncates a long name rather than flooding the transcript", () => {
+    const long = "x".repeat(200)
+    expect(Receipt.origin(long, "goal")).toHaveLength("handoff from \"\"".length + MaxOriginLength)
+  })
+
+  it("says the bare word when nothing names the work", () => {
+    expect(Receipt.origin(undefined, "")).toBe("handoff")
+  })
+})
+
+describe("sessionOfKey", () => {
+  it("round-trips the session a stash key was built from", () => {
+    expect(sessionOfKey(keyFor("ses_abc"))).toBe("ses_abc")
+  })
+
+  it("refuses a value that is not a stash key", () => {
+    expect(sessionOfKey("other/ses_abc")).toBeUndefined()
+    expect(sessionOfKey("")).toBeUndefined()
+  })
 })
 
 describe("Receipt.failure", () => {

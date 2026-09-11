@@ -4,7 +4,7 @@
 // is the same `define` with no runtime imports at all.
 import { define } from "@opencode-ai/plugin/tui/plugin"
 import { Receipt } from "./receipt.js"
-import { Handoff } from "./rpc.js"
+import { Handoff, sessionOfKey } from "./rpc.js"
 
 /**
  * Terminal client plugin. The server completes the handoff; this puts the
@@ -27,14 +27,63 @@ export default define({
       return route.type === "session" && route.sessionID === sessionID
     }
 
+    // The brief stamps `metadata.handoff` with the stash key, and that key
+    // embeds the session it came from. Reading it back beats keeping a map:
+    // it works for a handoff any client started, and it survives a restart.
+    const originOf = (sessionID: string): string | undefined => {
+      const stamped = [
+        ...context.data.session.message.list(sessionID),
+        ...context.data.session.pending.list(sessionID).map((item) =>
+          item.type === "synthetic" ? item.payload : undefined
+        ),
+      ]
+      for (const record of stamped) {
+        const key = record?.metadata?.["handoff"]
+        if (typeof key !== "string") continue
+        const source = sessionOfKey(key)
+        if (source !== undefined) return source
+      }
+      return undefined
+    }
+
+    // Reads the origin of whatever session the person is looking at.
+    const current = (): string | undefined => {
+      const route = context.ui.router.current()
+      return route.type === "session" ? originOf(route.sessionID) : undefined
+    }
+
+    const open = (sessionID: string) => {
+      if (!context.ui.tabs.open(sessionID)) {
+        context.ui.router.navigate({ type: "session", sessionID })
+      }
+    }
+
+    context.keymap.layer(() => ({
+      commands: [
+        {
+          id: "handoff.origin",
+          title: "Go to the session this was handed off from",
+          group: "Handoff",
+          // Inert outside a handed-off session, so the binding stays free
+          // everywhere it means nothing.
+          enabled: () => current() !== undefined,
+          bind: "<leader>h",
+          palette: true,
+          run: () => {
+            const source = current()
+            if (source === undefined) return false
+            open(source)
+          },
+        },
+      ],
+    }))
+
     const stop = [
       handoff.events.on("opened", (event) => {
         if (!watching(event.data.sessionID)) return
         // A tab both opens and focuses. Without tabs the router is the only
         // way through, and it replaces the view rather than adding to it.
-        if (!context.ui.tabs.open(event.data.nextSessionID)) {
-          context.ui.router.navigate({ type: "session", sessionID: event.data.nextSessionID })
-        }
+        open(event.data.nextSessionID)
         // The new session already carries the goal as its title, so the
         // toast says only what the title cannot: how much history came too.
         context.ui.toast.show({

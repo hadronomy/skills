@@ -105,6 +105,27 @@ be absent. All three arrive as `rpc.handoff.<name>`.
 `failed` is why the slash command needs no receipt. Its executor returns void,
 so a failed handoff stops in silence without an event.
 
+## In the session that receives a handoff
+
+The brief lands as one line in the transcript. The host renders the message
+description there, never the brief text, so that line names where the work
+came from: `handoff from "Casual greeting check-in"`. A session younger than
+its own title falls back to the handoff goal.
+
+The brief also stamps `metadata.handoff` with the stash key, and every key is
+`handoff/<source session id>`. The terminal client reads the origin back out
+of it. `<leader>h` opens the source session, and so does the command palette
+entry "Go to the session this was handed off from". The command needs no
+stored state, and it works for a handoff that any client started.
+
+The command stays disabled outside a handed-off session, so the binding is
+free everywhere it means nothing. Bind it elsewhere by its id,
+`handoff.origin`.
+
+The transcript line itself is not clickable. The client plugin surface
+publishes no slot inside the message list and no mouse event, so nothing can
+attach behaviour to a rendered message.
+
 `sessionID` is the source. Subscribe with the contract, never a string:
 
 ```ts
@@ -152,7 +173,7 @@ tui.ts            terminal client entry, same reason
 rpc.ts            shared contract entry, same reason
 src/rpc.ts        transfer contract: shapes, bounds, errors, events, the define
 src/command.ts    command input builders, namespaced as `Command`
-src/receipt.ts    failure text, namespaced as `Receipt`
+src/receipt.ts    failure and chip text, namespaced as `Receipt`
 src/transcript.ts host messages to plain text, namespaced as `Transcript`
 src/tool.ts       agent-callable transfer tool surface
 src/host.ts       host boundary: session, storage, file, and summarizer tags

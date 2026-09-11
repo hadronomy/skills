@@ -3,8 +3,9 @@ import type { Model } from "@opencode-ai/schema/model"
 import { Context, Effect, Layer, Match, Schedule, Schema } from "effect"
 import type { Capture } from "./capture.js"
 import type { Intent, PointerType, RenderReason, TransferInput } from "./rpc.js"
-import { Envelope, Key, Pointer, RenderFailed, Stash } from "./rpc.js"
+import { Envelope, keyFor, Pointer, RenderFailed, Stash } from "./rpc.js"
 import { Host } from "./host.js"
+import { Receipt } from "./receipt.js"
 import { orFallback, orStageFailure } from "./stage.js"
 import { Transcript } from "./transcript.js"
 
@@ -136,7 +137,7 @@ export const layer: Layer.Layer<
       pointer: Effect.fn("Handoff.render")(function* (input: TransferInput, captured: Capture.Captured) {
         const sessionID = input.sessionID
         const intent = input.intent
-        const key = Key.make(`handoff/${sessionID}`)
+        const key = keyFor(sessionID)
         // The intent can name a different model for the new session. The
         // brief describes the old one, so the old one condenses it.
         const text = brief(
@@ -229,7 +230,9 @@ export const layer: Layer.Layer<
                 session.synthetic({
                   sessionID: next.id,
                   text,
-                  description: "handoff",
+                  // The host renders this, never the brief text, so it names
+                  // where the work came from instead of repeating the word.
+                  description: Receipt.origin(captured.info.title, intent.goal),
                   metadata: { handoff: key },
                   delivery: arm.delivery,
                   resume: arm.resume,
