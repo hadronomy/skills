@@ -1,15 +1,18 @@
+import type { SessionImportInput } from "@opencode-ai/client/effect/api"
 import { Context, Effect, Layer, Match, Schedule, Schema } from "effect"
 import type { Capture } from "./capture.js"
-import type { Intent, PointerType, TransferInput } from "./rpc.js"
+import type { Intent, PointerType, RenderReason, TransferInput } from "./rpc.js"
 import { Envelope, Key, Pointer, RenderFailed, Stash } from "./rpc.js"
 import { Host } from "./host.js"
 import { orStageFailure } from "./stage.js"
 
-const renderFailed = () => new RenderFailed({ op: "render" })
+// Curried so every call site reads as the step that failed:
+// `orStageFailure(storage.set(...), renderFailed("stash"))`.
+const renderFailed = (reason: RenderReason) => () => new RenderFailed({ op: "render", reason })
 
 const gate = Effect.fn("Handoff.render.gate")(function* (value: unknown) {
   return yield* Schema.decodeUnknownEffect(Schema.Json)(value).pipe(
-    Effect.mapError(renderFailed),
+    Effect.mapError(renderFailed("encode")),
   )
 })
 
@@ -115,20 +118,20 @@ export const layer: Layer.Layer<
               messages: captured.messages,
               info: captured.info,
             }),
-            renderFailed,
+            renderFailed("encode"),
           )
           // Encoded structs keep optional keys, which never satisfy the
           // Json index signature at the type level. The gate re-proves
           // plain JSON-ness and yields the Json type storage demands.
           const json = yield* gate(stash)
-          yield* orStageFailure(storage.set(key, json), renderFailed)
+          yield* orStageFailure(storage.set(key, json), renderFailed("stash"))
           const seen = yield* orStageFailure(
             storage.get(key).pipe(Effect.retry(Schedule.recurs(2))),
-            renderFailed,
+            renderFailed("stash"),
           )
-          if (seen === undefined) return yield* renderFailed()
+          if (seen === undefined) return yield* renderFailed("stash")()
           const pointer = yield* gate({ key })
-          yield* orStageFailure(storage.set("handoff/latest", pointer), renderFailed)
+          yield* orStageFailure(storage.set("handoff/latest", pointer), renderFailed("stash"))
         }
 
         return yield* Match.value(resume).pipe(
@@ -137,10 +140,16 @@ export const layer: Layer.Layer<
               const directory = arm.directory ?? files.tmpdir()
               const safe = sessionID.replace(/[^A-Za-z0-9_-]/g, "_")
               const file = `${directory}/handoff-${safe}.json`
+              // The file the user moves has to import as is. `satisfies`
+              // pins that against the host's own input type at compile
+              // time, which is the only proof available without a server.
+              const importable = {
+                info: captured.info,
+                messages: captured.messages,
+              } satisfies SessionImportInput
               const envelope = yield* orStageFailure(
                 Schema.encodeEffect(Envelope)({
-                  info: captured.info,
-                  messages: captured.messages,
+                  ...importable,
                   handoff: {
                     key,
                     goal: intent.goal,
@@ -150,11 +159,11 @@ export const layer: Layer.Layer<
                     brief: text,
                   },
                 }),
-                renderFailed,
+                renderFailed("encode"),
               )
-              yield* orStageFailure(files.write(file, JSON.stringify(envelope, null, 2)), renderFailed)
+              yield* orStageFailure(files.write(file, JSON.stringify(envelope, null, 2)), renderFailed("write"))
               const pointer: PointerType = { kind: "export-file", key, file, messages: count }
-              return yield* orStageFailure(prove(pointer), renderFailed)
+              return yield* orStageFailure(prove(pointer), renderFailed("encode"))
             })),
           Match.discriminator("mode")("fork-local", (arm) =>
             // No fork on the plugin context in beta, so both boundaries
@@ -165,12 +174,16 @@ export const layer: Layer.Layer<
               const agent = intent.agent ?? captured.info.agent
               const model = intent.model ?? captured.info.model
               const next = yield* orStageFailure(
+                // No metadata here. The plugin session domain drops it at
+                // create through beta-19398, though the HTTP endpoint keeps
+                // it. The brief below carries the key instead, which is the
+                // record that survives.
                 session.create({
                   title: intent.goal.slice(0, 120),
                   ...(agent === undefined ? {} : { agent }),
                   ...(model === undefined ? {} : { model }),
                 }),
-                renderFailed,
+                renderFailed("create"),
               )
               yield* orStageFailure(
                 session.synthetic({
@@ -181,10 +194,10 @@ export const layer: Layer.Layer<
                   delivery: arm.delivery,
                   resume: arm.resume,
                 }),
-                renderFailed,
+                renderFailed("deliver"),
               )
               const pointer: PointerType = { kind: "fork-local", key, nextSessionID: next.id, messages: count }
-              return yield* orStageFailure(prove(pointer), renderFailed)
+              return yield* orStageFailure(prove(pointer), renderFailed("encode"))
             })),
           Match.exhaustive,
         )

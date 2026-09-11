@@ -86,7 +86,7 @@ export interface SessionCalls {
 export class TestSession extends Context.Service<TestSession, {
   readonly calls: Effect.Effect<SessionCalls>
   readonly syntheticInputs: Effect.Effect<ReadonlyArray<SyntheticInput>>
-  readonly created: Effect.Effect<{ agent: unknown; model: unknown }>
+  readonly created: Effect.Effect<{ agent: unknown; model: unknown; metadata: unknown }>
 }>()("Handoff/TestSession") {}
 
 export const makeSessionTest = (sessionScript: SessionScript) =>
@@ -100,7 +100,11 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
       })
       const remainingContextFailures = yield* Ref.make(sessionScript.failContext)
       const syntheticInputs = yield* Ref.make<Array<SyntheticInput>>([])
-      const created = yield* Ref.make<{ agent: unknown; model: unknown }>({ agent: undefined, model: undefined })
+      const created = yield* Ref.make<{ agent: unknown; model: unknown; metadata: unknown }>({
+        agent: undefined,
+        model: undefined,
+        metadata: undefined,
+      })
       const bump = (key: keyof SessionCalls) =>
         Ref.update(calls, (current) => ({ ...current, [key]: current[key] + 1 }))
 
@@ -119,12 +123,18 @@ export const makeSessionTest = (sessionScript: SessionScript) =>
           if (sessionScript.failGet) return yield* new TransportFault({ message: "gone" })
           return info("ses_abc", sessionScript.identity)
         }),
-        create: Effect.fn("Handoff.TestSession.create")(function* (input?: { agent?: unknown; model?: unknown }) {
-          yield* bump("create")
-          yield* Ref.update(created, () => ({ agent: input?.agent, model: input?.model }))
-          if (sessionScript.failCreate) return yield* new TransportFault({ message: "denied" })
-          return info(sessionScript.nextID)
-        }),
+        create: Effect.fn("Handoff.TestSession.create")(
+          function* (input?: { agent?: unknown; model?: unknown; metadata?: unknown }) {
+            yield* bump("create")
+            yield* Ref.update(created, () => ({
+              agent: input?.agent,
+              model: input?.model,
+              metadata: input?.metadata,
+            }))
+            if (sessionScript.failCreate) return yield* new TransportFault({ message: "denied" })
+            return info(sessionScript.nextID)
+          },
+        ),
         synthetic: (input: SyntheticInput) =>
           Effect.gen(function* () {
             yield* bump("synthetic")
@@ -209,6 +219,14 @@ export const testLayer = (
   )
   return Layer.mergeAll(app, fakes)
 }
+
+// The operation the plugin hands to every trigger, backed by the fakes.
+export const completeTest = (layer: Layer.Layer<Transfer.Service> = testLayer()): Transfer.Complete =>
+  (input) =>
+    Effect.gen(function* () {
+      const transfer = yield* Transfer.Service
+      return yield* transfer.transfer(input)
+    }).pipe(Effect.provide(layer))
 
 export const wireRoundTrip = (pointer: PointerType) => {
   const encoded = Schema.encodeSync(Pointer)(pointer)

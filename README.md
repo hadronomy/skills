@@ -5,7 +5,7 @@ OpenCode.
 
 ## Install
 
-### Claude Code: the plugin
+### The Claude Code plugin
 
 ```bash
 /plugin marketplace add hadronomy/skills
@@ -20,8 +20,8 @@ npx skills@latest add hadronomy/skills
 
 Pick the skills you want and the agents to install them on.
 
-Pick one route. The plugin is a managed, read-only bundle; the CLI writes files
-you own. Both at once leaves every skill present twice.
+Pick one route. The Claude Code plugin is a managed, read-only bundle; the CLI
+writes files you own. Both at once leaves every skill present twice.
 
 ## Skills
 
@@ -42,6 +42,16 @@ Not promoted: no plugin entry, no docs page, and not recommended yet.
 
 - [`windows-mcp`](skills/in-progress/windows-mcp) — driving the Windows desktop
   on `workstation` through the windows MCP server.
+
+## Plugins
+
+`plugins/` holds OpenCode v2 plugins. They are not skills, they are not part of
+the two routes above, and each publishes to npm on its own.
+
+- [`handoff`](plugins/handoff) — `/handoff` moves a session into a fresh one
+  and the terminal client lands you in it. One RPC method behind three
+  entrypoints: server, TUI, and the shared contract.
+  [`@hadronomy/opencode-handoff-plugin`](https://www.npmjs.com/package/@hadronomy/opencode-handoff-plugin)
 
 ## Restoring a machine
 

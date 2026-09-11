@@ -4,7 +4,7 @@ import { Session } from "@opencode-ai/schema/session"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Rpc } from "@opencode-ai/plugin/rpc"
 import type { StandardSchemaV1 } from "@standard-schema/spec"
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Effect, Exit, Match, Schema } from "effect"
 
 /**
  * Resume directive. Fork-local starts a fresh session and injects the brief.
@@ -181,6 +181,53 @@ export interface FilePointer extends Schema.Schema.Type<typeof FilePointer> {}
 export const Pointer = Schema.Union([ForkPointer, FilePointer])
 export type PointerType = Schema.Schema.Type<typeof Pointer>
 
+// Event payloads stay `type`, never `interface`. The host types event data as
+// `Readonly<Record<string, unknown>>`, and only a type alias picks up the
+// implicit index signature that makes a struct assignable to it.
+
+/**
+ * A handoff landed in a fresh session. Carries what a client needs to follow
+ * it: where it came from, where it went, and how much history travelled.
+ *
+ * @category models
+ * @since 0.4.0
+ */
+export const Opened = Schema.Struct({
+  key: Key,
+  sessionID: Session.ID,
+  nextSessionID: Session.ID,
+  goal: Schema.String,
+  messages: Schema.Finite,
+})
+export type Opened = Schema.Schema.Type<typeof Opened>
+
+/**
+ * A handoff landed in a file for a cross-machine move. No session exists yet,
+ * so the file is the only thing to act on.
+ *
+ * @category models
+ * @since 0.4.0
+ */
+export const Exported = Schema.Struct({
+  key: Key,
+  sessionID: Session.ID,
+  file: Schema.String,
+  goal: Schema.String,
+  messages: Schema.Finite,
+})
+export type Exported = Schema.Schema.Type<typeof Exported>
+
+/**
+ * Why the capture stage gave up. `empty` means the session held no history to
+ * hand off, which no retry can change; `transport` means both reads failed
+ * after the bounded retry.
+ *
+ * @category errors
+ * @since 0.4.0
+ */
+export const CaptureReason = Schema.Literals(["empty", "transport"])
+export type CaptureReason = typeof CaptureReason.Type
+
 /**
  * Capture read failed or found nothing to hand off.
  *
@@ -189,8 +236,18 @@ export type PointerType = Schema.Schema.Type<typeof Pointer>
  */
 export class CaptureFailed extends Schema.TaggedError<CaptureFailed>()(
   "CaptureFailed",
-  { op: Schema.Literal("capture") },
+  { op: Schema.Literal("capture"), reason: CaptureReason },
 ) {}
+
+/**
+ * Which render step failed. Each value names one host call, so a caller can
+ * tell a refused session from a full disk without reading the plugin.
+ *
+ * @category errors
+ * @since 0.4.0
+ */
+export const RenderReason = Schema.Literals(["encode", "stash", "create", "deliver", "write"])
+export type RenderReason = typeof RenderReason.Type
 
 /**
  * Stash, fresh session, brief delivery, or file write failed.
@@ -200,7 +257,7 @@ export class CaptureFailed extends Schema.TaggedError<CaptureFailed>()(
  */
 export class RenderFailed extends Schema.TaggedError<RenderFailed>()(
   "RenderFailed",
-  { op: Schema.Literal("render") },
+  { op: Schema.Literal("render"), reason: RenderReason },
 ) {}
 
 /**
@@ -324,9 +381,10 @@ export const TransferInputPortable: StandardSchemaV1<TransferInput, TransferInpu
 export const PointerPortable: StandardSchemaV1<PointerType, PointerType> = portable(Pointer)
 
 /**
- * Shared RPC contract: one method, the shapes above, the errors above.
- * Published through the `./rpc` export so callers import it without loading
- * the implementation. Every face travels as a `portable` adapter, never a
+ * Shared RPC contract: one method, the shapes above, the errors above, plus
+ * the two events that announce a finished handoff. Published through the
+ * `./rpc` export so callers — the TUI plugin included — import it without
+ * loading the implementation. Every face travels as a `portable` adapter, never a
  * raw schema: the host decodes method schemas with its own Effect copy,
  * whose interpreter defects on foreign ASTs, so raw schemas fail every call
  * at the boundary instead of validating it.
@@ -346,5 +404,63 @@ export const Handoff = Rpc.define({
       },
     },
   },
-  events: {},
+  events: {
+    opened: { schema: portable(Opened) },
+    exported: { schema: portable(Exported) },
+  },
 })
+
+/**
+ * Turns a returned pointer into the event that announces it. One arm per
+ * resume mode, mirroring the pointer union, so a subscriber picks the arm it
+ * can act on and never branches on a field that can be absent.
+ *
+ * The result is the argument list of `events.emit`, so the caller spreads it:
+ * `yield* registration.events.emit(...announce(input, pointer))`.
+ *
+ * **Example** (A fork-local pointer announces the session to open)
+ *
+ * ```ts import.meta.vitest
+ * import { announce } from "./rpc.js"
+ *
+ * const [name, data] = announce(
+ *   { sessionID: "ses_abc", intent: { goal: "audit" } } as never,
+ *   { kind: "fork-local", key: "handoff/ses_abc", nextSessionID: "ses_xyz", messages: 12 } as never,
+ * )
+ *
+ * name // => "opened"
+ * data.goal // => "audit"
+ * ```
+ *
+ * @category combinators
+ * @since 0.4.0
+ */
+export const announce = (
+  input: TransferInput,
+  pointer: PointerType,
+): Rpc.EventInput<typeof Handoff> =>
+  Match.value(pointer).pipe(
+    Match.discriminator("kind")("fork-local", (arm): Rpc.EventInput<typeof Handoff> =>
+      [
+        "opened",
+        {
+          key: arm.key,
+          sessionID: input.sessionID,
+          nextSessionID: arm.nextSessionID,
+          goal: input.intent.goal,
+          messages: arm.messages,
+        },
+      ]),
+    Match.discriminator("kind")("export-file", (arm): Rpc.EventInput<typeof Handoff> =>
+      [
+        "exported",
+        {
+          key: arm.key,
+          sessionID: input.sessionID,
+          file: arm.file,
+          goal: input.intent.goal,
+          messages: arm.messages,
+        },
+      ]),
+    Match.exhaustive,
+  )

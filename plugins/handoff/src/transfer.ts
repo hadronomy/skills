@@ -4,15 +4,25 @@ import type { CaptureFailed, PointerType, RenderFailed, TransferInput } from "./
 import { Render } from "./render.js"
 
 /**
+ * The one operation behind every handoff trigger. The slash command, the
+ * agent tool, and the RPC handler all take this exact function, so none of
+ * them can drift into its own half of the behaviour.
+ *
+ * @category models
+ * @since 0.4.0
+ */
+export type Complete = (
+  input: TransferInput,
+) => Effect.Effect<PointerType, CaptureFailed | RenderFailed>
+
+/**
  * One method owns the whole handoff: capture history, render the pointer.
  *
  * @category services
  * @since 0.2.0
  */
 export class Service extends Context.Service<Service, {
-  readonly transfer: (
-    input: TransferInput,
-  ) => Effect.Effect<PointerType, CaptureFailed | RenderFailed>
+  readonly transfer: Complete
 }>()("@hadronomy/handoff/Handoff") {}
 
 /**
