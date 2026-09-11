@@ -53,6 +53,44 @@ export const Key = Schema.String.pipe(Schema.brand("Handoff.Key"))
 export type Key = typeof Key.Type
 
 /**
+ * Prefix every stash key carries. Owned here because two sides read it: the
+ * render stage writes the key, and a client reads the source session back
+ * out of it.
+ *
+ * @category configuration
+ * @since 0.6.0
+ */
+export const KeyPrefix = "handoff/"
+
+/**
+ * Builds the stash key for a source session.
+ *
+ * @category constructors
+ * @since 0.6.0
+ */
+export const keyFor = (sessionID: string): Key => Key.make(`${KeyPrefix}${sessionID}`)
+
+/**
+ * Reads the source session back out of a stash key, or undefined when the
+ * value is not one. This is how a client finds where a brief came from
+ * without keeping a map of its own.
+ *
+ * **Example** (A key round-trips to the session that made it)
+ *
+ * ```ts import.meta.vitest
+ * import { keyFor, sessionOfKey } from "./rpc.js"
+ *
+ * sessionOfKey(keyFor("ses_abc")) // => "ses_abc"
+ * sessionOfKey("something/else") // => undefined
+ * ```
+ *
+ * @category combinators
+ * @since 0.6.0
+ */
+export const sessionOfKey = (key: string): string | undefined =>
+  key.startsWith(KeyPrefix) ? key.slice(KeyPrefix.length) : undefined
+
+/**
  * Artifact kind. Refs point at work items and files; they never paste
  * content.
  *

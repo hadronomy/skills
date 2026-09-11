@@ -293,6 +293,16 @@ describe("transfer", () => {
       expect(injected.text).not.toContain("ses_abc")
     }).pipe(Effect.provide(testLayer())))
 
+  it.effect("labels the brief with the source session, not the bare word", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal("review the parser"))
+      const [brief] = yield* session.syntheticInputs
+      // The host renders this field, never the brief text.
+      expect(brief?.description).toBe('handoff from "review the parser"')
+    }).pipe(Effect.provide(testLayer())))
+
   it.effect("condenses the conversation, not the tool noise", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
