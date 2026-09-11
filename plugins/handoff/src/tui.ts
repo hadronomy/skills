@@ -1,4 +1,8 @@
-import { Plugin } from "@opencode-ai/plugin/tui"
+// `@opencode-ai/plugin/tui` re-exports its Solid bindings, so importing the
+// barrel pulls in `solid-js` — an optional peer this package does not carry.
+// In a published install that throws before any of this runs. The deep path
+// is the same `define` with no runtime imports at all.
+import { define } from "@opencode-ai/plugin/tui/plugin"
 import { Receipt } from "./receipt.js"
 import { Handoff } from "./rpc.js"
 
@@ -8,10 +12,10 @@ import { Handoff } from "./rpc.js"
  * in the one they were trying to leave.
  *
  * It adds no trigger of its own. `/handoff`, `/handoff-interview`, and an
- * HTTP caller all announce through the same two contract events, so this
- * follows every one of them and cannot drift from what the server did.
+ * HTTP caller all announce through the same contract events, so this follows
+ * every one of them and cannot drift from what the server did.
  */
-export default Plugin.define({
+export default define({
   id: "handoff",
   setup: (context) => {
     const handoff = context.client.rpc(Handoff)
@@ -46,6 +50,16 @@ export default Plugin.define({
           title: "Handoff exported",
           message: context.ui.format.path(event.data.file),
           variant: "success",
+        })
+      }),
+      handoff.events.on("failed", (event) => {
+        if (!watching(event.data.sessionID)) return
+        // Without this the slash command fails in silence: its executor
+        // returns void, and nothing is written back into the session.
+        context.ui.toast.show({
+          title: "Handoff stopped",
+          message: event.data.message,
+          variant: "error",
         })
       }),
     ]

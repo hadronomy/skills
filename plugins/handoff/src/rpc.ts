@@ -4,7 +4,7 @@ import { Session } from "@opencode-ai/schema/session"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Rpc } from "@opencode-ai/plugin/rpc"
 import type { StandardSchemaV1 } from "@standard-schema/spec"
-import { Cause, Effect, Exit, Match, Schema } from "effect"
+import { Cause, Effect, Exit, JsonSchema, Match, Schema } from "effect"
 
 /**
  * Resume directive. Fork-local starts a fresh session and injects the brief.
@@ -200,6 +200,20 @@ export const Opened = Schema.Struct({
   messages: Schema.Finite,
 })
 export type Opened = Schema.Schema.Type<typeof Opened>
+
+/**
+ * A handoff stopped. Carries the source session and the sentence that says
+ * why, so a watching client reports the same words every other surface does.
+ *
+ * @category models
+ * @since 0.5.0
+ */
+export const Failed = Schema.Struct({
+  sessionID: Session.ID,
+  goal: Schema.String,
+  message: Schema.String,
+})
+export type Failed = Schema.Schema.Type<typeof Failed>
 
 /**
  * A handoff landed in a file for a cross-machine move. No session exists yet,
@@ -407,8 +421,42 @@ export const Handoff = Rpc.define({
   events: {
     opened: { schema: portable(Opened) },
     exported: { schema: portable(Exported) },
+    failed: { schema: portable(Failed) },
   },
 })
+
+/**
+ * Renders a contract schema as self-contained JSON Schema.
+ *
+ * The tool seam needs this and the RPC seam does not. A tool definition is
+ * shown to a model, so the host converts it to JSON Schema, and it refuses a
+ * Standard Schema adapter whose vendor it does not know. Generating here, in
+ * the copy that owns the schema, keeps that conversion off the host.
+ *
+ * `$defs` travels inline because the host receives one value, not a document.
+ *
+ * **Example** (Bounds survive the conversion)
+ *
+ * ```ts import.meta.vitest
+ * import { jsonSchema, TransferInput } from "./rpc.js"
+ *
+ * const shape = jsonSchema(TransferInput) as { properties: { intent: { properties: { goal: { maxLength: number } } } } }
+ *
+ * shape.properties.intent.properties.goal.maxLength // => 280
+ * ```
+ *
+ * @category combinators
+ * @since 0.5.0
+ */
+export const jsonSchema = <S extends Schema.Codec<unknown, unknown, never, never>>(
+  schema: S,
+): JsonSchema.JsonSchema => {
+  const document = Schema.toJsonSchemaDocument(schema)
+  const defs = document.definitions
+  return Object.keys(defs).length === 0
+    ? document.schema
+    : { ...document.schema, $defs: defs }
+}
 
 /**
  * Turns a returned pointer into the event that announces it. One arm per

@@ -21,3 +21,24 @@ export const orStageFailure = <A, E, TE>(
       () => Effect.fail(make()),
     ),
   )
+
+/**
+ * Recover to a value from every non-interrupt outcome. Use where a failed
+ * step has a worse but honest substitute, and the substitute serves the
+ * caller better than refusing the whole operation. Interruption passes
+ * through untouched, for the same reason as above.
+ *
+ * @category combinators
+ * @since 0.5.0
+ */
+export const orFallback = <A, E>(
+  fx: Effect.Effect<A, E>,
+  make: () => A,
+): Effect.Effect<A> =>
+  fx.pipe(
+    Effect.catch(() => Effect.sync(make)),
+    Effect.catchCauseIf(
+      (cause) => !Cause.hasInterruptsOnly(cause),
+      () => Effect.sync(make),
+    ),
+  )

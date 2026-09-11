@@ -3,27 +3,38 @@ import type { ArtifactRef } from "./rpc.js"
 import { MaxGoalLength, MaxRefs } from "./rpc.js"
 
 /**
- * Resolves command text to a goal: trimmed text, else the session title,
- * else a standing label. Total: every input yields a goal.
+ * Resolves command text to a goal: the typed text, else the session title,
+ * else the last thing the person asked for, else a standing label. Total:
+ * every input yields a goal.
  *
- * **Example** (Empty text falls back to title, then label)
+ * The third step earns its place. A session titles itself a few seconds
+ * after its first reply, so a handoff started before that has no title, and
+ * the standing label names no work at all.
+ *
+ * **Example** (Each source takes over when the one before it is empty)
  *
  * ```ts import.meta.vitest
  * import { resolveGoal } from "./command.js"
  *
- * resolveGoal("audit", "Old title") // => "audit"
- * resolveGoal("", "Weekly review") // => "Weekly review"
- * resolveGoal("", undefined) // => "Continue this session"
+ * resolveGoal("audit", "Old title", "hi") // => "audit"
+ * resolveGoal("", "Weekly review", "hi") // => "Weekly review"
+ * resolveGoal("", undefined, "fix the parser") // => "fix the parser"
+ * resolveGoal("", undefined, undefined) // => "Continue this session"
  * ```
  *
  * @category combinators
  * @since 0.2.0
  */
-export const resolveGoal = (text: string, title: string | undefined): string => {
-  const trimmed = text.trim()
-  if (trimmed.length > 0) return trimmed.slice(0, MaxGoalLength)
-  const fallback = title?.trim() ?? ""
-  return fallback.length > 0 ? fallback.slice(0, MaxGoalLength) : "Continue this session"
+export const resolveGoal = (
+  text: string,
+  title: string | undefined,
+  asked: string | undefined,
+): string => {
+  for (const source of [text, title, asked]) {
+    const trimmed = source?.trim() ?? ""
+    if (trimmed.length > 0) return trimmed.slice(0, MaxGoalLength)
+  }
+  return "Continue this session"
 }
 
 /**

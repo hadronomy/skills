@@ -160,8 +160,8 @@ describe("rpc contract", () => {
     ])
   })
 
-  it("publishes one event per resume mode", () => {
-    expect(Object.keys(Handoff.events).sort()).toEqual(["exported", "opened"])
+  it("publishes one event per resume mode, plus one for a stop", () => {
+    expect(Object.keys(Handoff.events).sort()).toEqual(["exported", "failed", "opened"])
   })
 })
 

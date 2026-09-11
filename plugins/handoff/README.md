@@ -1,7 +1,7 @@
 # Handoff plugin
 
 One RPC method moves a session to a resumable pointer, and the terminal
-client lands you in it. Callers send a structured intent; the plugin captures
+client lands you in it. Callers send a structured intent. The plugin captures
 history, renders a pointer, and announces where the work went. Fixes land in
 one module.
 
@@ -31,16 +31,17 @@ Slash command in any session:
 /handoff continue the audit on Monday
 ```
 
-The command builds the intent, completes one transfer, and posts a receipt in
-the source session. In the terminal client you do not read that receipt: the
-handoff announces itself, and the client opens the new session and focuses it.
-Only the client watching the source session moves; another window keeps its
-own work.
+The command builds the intent and completes one transfer. Nothing is written
+back into the source session. The handoff announces itself, and the terminal
+client watching that session opens the new session and focuses it. Another
+window keeps its own work.
 
 Text after `/handoff` becomes the goal. Bare `/handoff` falls back to the
-session title, then to a standing label. Delivery, attachments, skills, agent,
-and model arrive from context, so the command takes no flags. Anything vaguer
-belongs to the guided version below.
+session title, then to the last thing you asked for, then to a standing label.
+A session titles itself a few seconds after its first reply, so the third step
+is what names the work in a young session. Delivery, attachments, skills,
+agent, and model arrive from context, so the command takes no flags. Anything
+vaguer belongs to the guided version below.
 
 For the guided version, copy `commands/handoff-interview.md` from the package
 into a `commands` directory. Then run `/handoff-interview`. The agent reads the
@@ -49,8 +50,8 @@ and calls the `handoff_transfer` tool once. The tool takes the transfer intent
 and returns the pointer, and it announces exactly like the slash command does.
 
 The intent carries `skills`, `agent`, `model`, and typed `refs`. Skills default
-to empty. Agent and model stay absent unless set; the transfer fills both from
-the source session. Refs take `spec`, `plan`, `adr`, `issue`, `commit`, or
+to empty. Agent and model stay absent unless set, and the transfer fills both
+from the source session. Refs take `spec`, `plan`, `adr`, `issue`, `commit`, or
 `file`. Session, stash-key, and next-session IDs are brands. All three travel
 as plain strings on the wire.
 
@@ -71,16 +72,38 @@ const ptr = await client.rpc(Handoff).transfer({
 // out.file -> move the file, then: opencode2 import --directory ./newdir <file>
 ```
 
+## The brief
+
+The brief is the whole inheritance. A session that starts from it has no other
+context, so it carries the work itself, not a pointer to work held elsewhere.
+
+Render condenses the source conversation with the model that session was
+using. The brief then names the goal, the next move, the skills, the
+artifacts, and the condensed handover. Machinery the receiver cannot act on
+stays out: the boundary, the message count, the stash key, and the source
+session ID live in the stash and the pointer.
+
+If the model call fails, the brief carries the tail of the conversation
+verbatim instead, and the server logs a warning. A failed call costs the brief
+its polish, never its content.
+
+Reasoning and tool parts never reach the brief. They are the model talking to
+itself, and they crowd out what the next agent can act on.
+
 ## Events
 
-The contract publishes one event per resume mode. A subscriber picks the arm
-it can act on, and never branches on a field that can be absent. Both arrive
-as `rpc.handoff.<name>`.
+The contract publishes one event per resume mode, plus one for a stop. A
+subscriber picks the arm it can act on, and never branches on a field that can
+be absent. All three arrive as `rpc.handoff.<name>`.
 
 | Event | Fires when | Carries |
 |---|---|---|
 | `opened` | a handoff lands in a fresh session | `key`, `sessionID`, `nextSessionID`, `goal`, `messages` |
 | `exported` | a handoff lands in a file | `key`, `sessionID`, `file`, `goal`, `messages` |
+| `failed` | a handoff stops | `sessionID`, `goal`, `message` |
+
+`failed` is why the slash command needs no receipt. Its executor returns void,
+so a failed handoff stops in silence without an event.
 
 `sessionID` is the source. Subscribe with the contract, never a string:
 
@@ -92,9 +115,9 @@ client.rpc(Handoff).events.on("opened", (event) => {
 })
 ```
 
-The transfer emits after the handoff has already landed, and a failed emit
-warns instead of failing. A lost event costs a watching client its jump, never
-the work.
+The two success events emit after the handoff has already landed, and a failed
+emit warns instead of failing. A lost event costs a watching client its report,
+never the work.
 
 The brief that lands in the new session carries `metadata.handoff`, set to the
 stash key. That is how a client tells a handoff brief from any other message,
@@ -129,10 +152,11 @@ tui.ts            terminal client entry, same reason
 rpc.ts            shared contract entry, same reason
 src/rpc.ts        transfer contract: shapes, bounds, errors, events, the define
 src/command.ts    command input builders, namespaced as `Command`
-src/receipt.ts    pointer and failure text, namespaced as `Receipt`
+src/receipt.ts    failure text, namespaced as `Receipt`
+src/transcript.ts host messages to plain text, namespaced as `Transcript`
 src/tool.ts       agent-callable transfer tool surface
-src/host.ts       host boundary: session, storage, and file tags plus layers
-src/stage.ts      interrupt-preserving failure converter
+src/host.ts       host boundary: session, storage, file, and summarizer tags
+src/stage.ts      interrupt-preserving failure and fallback converters
 src/capture.ts    Capture service: history read over the gateway
 src/render.ts     Render service: stash plus preload or relocate
 src/transfer.ts   Handoff service composing the two stages
@@ -172,7 +196,7 @@ installed toolchain proves otherwise (effect 4.0.0-rc.112,
   omits it.
 - Render uses `create` plus `synthetic`. The plugin session domain exposes no
   `fork`, `export`, or `import` through beta-19271, so both boundaries start a
-  fresh session with the brief. The boundary stays recorded in the stash; true
+  fresh session with the brief. The boundary stays recorded in the stash. True
   fork lands when the host exposes it.
 - Error data carries the full tagged error instance. The host types demand the
   class, not a plain payload.
@@ -182,32 +206,40 @@ installed toolchain proves otherwise (effect 4.0.0-rc.112,
 - Export-file with `sanitize: false` writes the file alone and skips the stash,
   so no side copy lands in storage.
 - `refs` are typed artifacts (`kind` plus `ref`), a breaking change over string
-  refs. The package is pre-1.0; no migration path ships.
+  refs. The package is pre-1.0, so no migration path ships.
 - `skills` defaults to `[]`; `agent` and `model` stay absent unless set.
 - Session IDs, stash keys, and next-session IDs are brands (`Session.ID`,
   `Handoff.Key`). All three encode as plain strings.
 - Agent and model carry over from source info unless the intent names
   replacements. A server fork preserves the same pair.
-- Pointers and the envelope encode through Schema before return or write;
-  malformed output is unreturnable.
+- Pointers and the envelope encode through Schema before return or write.
+  Malformed output is unreturnable.
 - Stage errors carry a `reason` beside `op`. The spec's `RedactRefused` shape
   is gone with redaction, but its idea is not: a refusal names its cause.
 - The new session gets no `metadata`. The plugin session domain drops the
   field at `create` through beta-19398, although the HTTP endpoint keeps it.
   The brief carries the stash key instead.
+- The tool seam takes JSON Schema, not the `portable` adapter the RPC seam
+  takes. The host converts a tool shape for the model, and it refuses a
+  vendor it cannot convert, so the tool decodes its own input.
+- The terminal client entry imports `@opencode-ai/plugin/tui/plugin`, not the
+  `@opencode-ai/plugin/tui` barrel. The barrel re-exports its Solid bindings,
+  and `solid-js` is an optional peer that a published install does not carry.
+- `generate.text` names the source session's model. Without it the host picks
+  a default and fails where no default exists.
 
 ## Stage policy
 
 - `capture` reads `session.context` plus `session.get`. Empty context fails
-  closed with no retry. Transport faults retry recurs(2); the reads are
+  closed with no retry. Transport faults retry recurs(2). The reads are
   idempotent, so retry is safe.
 - `render` stashes under `handoff/<sessionID>` with a `handoff/latest` pointer
   write, then preloads the brief or relocates the file. Raw export
   (`sanitize: false`) skips the stash: the file is the only artifact. Only the
   stash verify-read retries recurs(2). Create, synthetic delivery, and the file
   write run once.
-- Storage has no documented quota or TTL. The design never depends on expiry;
-  the `latest` pointer is an explicit write.
+- Storage has no documented quota or TTL. The design never depends on expiry.
+  The `latest` pointer is an explicit write.
 
 ## Against a live server
 
@@ -230,6 +262,15 @@ session domain drops `metadata` at `create`, so the stamp moved to the brief.
 The brief itself lands in the inbox of the new session, not in its message
 list, until that session next runs.
 
-One path stays unexercised, because it needs a terminal client and not an
-HTTP call: the `tui` entrypoint receiving `opened` and opening the session it
-names. The server half of that path is proven above.
+A second probe on 2026-09-11 covered this round against the same host.
+
+| Path | Result |
+|---|---|
+| `handoff_transfer` registration | Registers. The host logged no rejection after the JSON Schema change. |
+| Terminal client entry | `src/tui.ts` imports and exports a setup function. The barrel import failed on `solid-js`. |
+| Brief content | Carries the conversation, not a message count and a session ID. |
+| Summarizer fallback | The probe server had no provider, so the brief fell back to the transcript and the server logged the warning. |
+
+Two paths stay unexercised. Both need a terminal client and a provider, not an
+HTTP call: the `tui` entrypoint opening the session that `opened` names, and a
+model-condensed brief end to end. Unit tests cover both with fakes.

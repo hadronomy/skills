@@ -8,6 +8,7 @@ import {
   TestFiles,
   TestSession,
   TestStorage,
+  TestSummarizer,
   testLayer,
   wireRoundTrip,
 } from "./test-support.js"
@@ -281,11 +282,52 @@ describe("transfer", () => {
       yield* handoff.transfer(input)
       const inputs = yield* session.syntheticInputs
       const injected = inputs[0]
-      const lines = injected.text.split("\n")
-      expect(lines[0]).toBe("You are resuming work handed off from another session.")
-      expect(lines[1]).toBe("Handoff: audit")
-      expect(lines[2]).toContain("Resume: steer with the brief, then resume the work below")
-      expect(injected.text).not.toContain("Key handoff/")
+      expect(injected.text).toContain("You are resuming work handed off from another session.")
+      expect(injected.text).toContain("Goal: audit")
+      expect(injected.text).toContain("Then: Continue the work described below.")
+      // The brief is the whole inheritance, so it carries the work itself.
+      expect(injected.text).toContain("Handover\nCONDENSED")
+      // Machinery the receiver cannot act on stays out of agent-visible text.
+      expect(injected.text).not.toContain("handoff/ses_abc")
+      expect(injected.text).not.toContain("boundary")
+      expect(injected.text).not.toContain("ses_abc")
     }).pipe(Effect.provide(testLayer())))
 
+  it.effect("condenses the conversation, not the tool noise", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const summarizer = yield* TestSummarizer
+      yield* handoff.transfer(minimal())
+      const [transcript] = yield* summarizer.seen
+      expect(transcript).toBe("User: hello\nUser: world")
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("condenses with the model the source session was using", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const summarizer = yield* TestSummarizer
+      yield* handoff.transfer(minimal())
+      const [model] = yield* summarizer.models
+      // Without this the host picks a default, and fails where none exists.
+      expect(model).toEqual({ providerID: "anthropic", id: "sonnet" })
+    }).pipe(Effect.provide(testLayer(script({ identity: true })))))
+
+  it.effect("falls back to the transcript when the summarizer dies", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal())
+      const [injected] = yield* session.syntheticInputs
+      // A failed model call must not cost the handoff its context.
+      expect(injected?.text).toContain("Handover\nUser: hello\nUser: world")
+    }).pipe(Effect.provide(testLayer(script(), {}, { fail: true }))))
+
+  it.effect("falls back to the transcript when the summarizer returns nothing", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal())
+      const [injected] = yield* session.syntheticInputs
+      expect(injected?.text).toContain("Handover\nUser: hello\nUser: world")
+    }).pipe(Effect.provide(testLayer(script(), {}, { blank: true }))))
 })
