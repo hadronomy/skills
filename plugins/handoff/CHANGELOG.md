@@ -1,5 +1,17 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.4.0
+
+### Minor Changes
+
+- [#10](https://github.com/hadronomy/skills/pull/10) [`004e6ee`](https://github.com/hadronomy/skills/commit/004e6eec19cdfa5dc1a30b42b460aa8d5a710629) Thanks [@hadronomy](https://github.com/hadronomy)! - `CaptureFailed` and `RenderFailed` carry a `reason` beside `op`, naming the step that failed: `empty` or `transport` for capture, and `encode`, `stash`, `create`, `deliver`, or `write` for render. One module turns each reason into one sentence, so the RPC error message, the tool error, and the receipt in the source session never read two ways. Receipts also drop the raw stash key for the thing to act on: the session to continue in, or the file to move and the command to import it.
+
+- [#10](https://github.com/hadronomy/skills/pull/10) [`004e6ee`](https://github.com/hadronomy/skills/commit/004e6eec19cdfa5dc1a30b42b460aa8d5a710629) Thanks [@hadronomy](https://github.com/hadronomy)! - A finished handoff now opens the session it made. The package ships a `tui` entrypoint beside the server one, the contract publishes `opened` and `exported` events, and the terminal client watching the source session opens the new session and focuses it. `/handoff`, `/handoff-interview`, and an HTTP caller all announce through the same two events, because the slash command, the agent tool, and the RPC handler now take one shared `Transfer.Complete`. A lost event warns rather than failing: it costs a watching client its jump, never the work.
+
+### Patch Changes
+
+- [#10](https://github.com/hadronomy/skills/pull/10) [`004e6ee`](https://github.com/hadronomy/skills/commit/004e6eec19cdfa5dc1a30b42b460aa8d5a710629) Thanks [@hadronomy](https://github.com/hadronomy)! - Build against `@opencode-ai/plugin` beta-19271, up from beta-19086. The export envelope pins against the host's own `SessionImportInput` with `satisfies`, which is the strongest proof of import compatibility available without a live server. A probe against opencode2 beta-19398 confirms the whole server path: the RPC registers, both resume modes return their pointer, the error encoding carries `reason`, the written envelope imports back into the host, and both events fire with the payload a client reads.
+
 ## 0.3.1
 
 ### Patch Changes
