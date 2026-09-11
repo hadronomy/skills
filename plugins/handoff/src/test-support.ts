@@ -201,9 +201,38 @@ export const filesTestLayer = Layer.effectContext(
     }),
   )
 
+export class TestSummarizer extends Context.Service<TestSummarizer, {
+  readonly seen: Effect.Effect<ReadonlyArray<string>>
+  readonly models: Effect.Effect<ReadonlyArray<unknown>>
+}>()("Handoff/TestSummarizer") {}
+
+export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean } = {}) =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<Array<string>>([])
+      const models = yield* Ref.make<Array<unknown>>([])
+      const summarizer = Host.Summarizer.of({
+        condense: (transcript, model) =>
+          Effect.gen(function* () {
+            yield* Ref.update(seen, (current) => [...current, transcript])
+            yield* Ref.update(models, (current) => [...current, model])
+            if (opts.fail) return yield* Effect.die(new TransportFault({ message: "model" }))
+            if (opts.blank) return ""
+            return "CONDENSED"
+          }),
+      })
+      const probe = TestSummarizer.of({ seen: Ref.get(seen), models: Ref.get(models) })
+      return Context.empty().pipe(
+        Context.add(Host.Summarizer, summarizer),
+        Context.add(TestSummarizer, probe),
+      )
+    }),
+  )
+
 export const testLayer = (
   sessionScript: SessionScript = script(),
   storageOpts: { dieSet?: boolean; blankGet?: boolean } = {},
+  summarizerOpts: { fail?: boolean; blank?: boolean } = {},
 ) => {
   // Provide discards the fakes' outputs, so merge them back: the app sees
   // the gateways while tests keep the probes. One shared reference means
@@ -211,6 +240,7 @@ export const testLayer = (
   const fakes = Layer.mergeAll(
     makeSessionTest(sessionScript),
     makeStorageTest(storageOpts),
+    makeSummarizerTest(summarizerOpts),
     filesTestLayer,
   )
   const app = Transfer.layer.pipe(

@@ -1,5 +1,5 @@
 import { Match } from "effect"
-import type { CaptureFailed, PointerType, RenderFailed } from "./rpc.js"
+import type { CaptureFailed, RenderFailed } from "./rpc.js"
 
 /**
  * A message tally that reads as English at one. Shared with the TUI so a
@@ -18,38 +18,6 @@ import type { CaptureFailed, PointerType, RenderFailed } from "./rpc.js"
  * @since 0.4.0
  */
 export const messages = (count: number): string => `${count} message${count === 1 ? "" : "s"}`
-
-/**
- * The line the source session keeps after a handoff. Leads with what moved,
- * closes with the handle to act on: the new session for a fork-local
- * handoff, the file and its import command for an export.
- *
- * **Example** (Each resume mode names the thing to act on)
- *
- * ```ts import.meta.vitest
- * import { pointer } from "./receipt.js"
- *
- * const one = { kind: "fork-local", key: "handoff/ses_abc", nextSessionID: "ses_xyz", messages: 1 }
- *
- * pointer(one as never) // => "Handed off 1 message. Continue in session ses_xyz."
- * ```
- *
- * @category combinators
- * @since 0.4.0
- */
-export const pointer = (value: PointerType): string =>
-  Match.value(value).pipe(
-    Match.discriminator("kind")(
-      "fork-local",
-      (arm) => `Handed off ${messages(arm.messages)}. Continue in session ${arm.nextSessionID}.`,
-    ),
-    Match.discriminator("kind")(
-      "export-file",
-      (arm) =>
-        `Handed off ${messages(arm.messages)} to ${arm.file}. Move it, then: opencode2 import --directory <dir> <file>`,
-    ),
-    Match.exhaustive,
-  )
 
 /**
  * Why a handoff stopped, as one sentence a person can act on. Every caller

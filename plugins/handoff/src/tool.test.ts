@@ -6,7 +6,7 @@ import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { Tool } from "@opencode-ai/schema/tool"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
-import { PointerPortable, TransferInputPortable } from "./rpc.js"
+import { jsonSchema, TransferInput } from "./rpc.js"
 import { completeTest, minimal, script, testLayer } from "./test-support.js"
 import { Tools } from "./tool.js"
 
@@ -43,9 +43,22 @@ describe("handoff_transfer tool", () => {
     expect(fake.namespaces).toEqual([{ name: "handoff", description: "Session handoff operations" }])
     expect(fake.added).toHaveLength(1)
     expect(fake.added[0]?.name).toBe("transfer")
-    expect(fake.added[0]?.input).toBe(TransferInputPortable)
-    expect(fake.added[0]?.output).toBe(PointerPortable)
+    // JSON Schema, not a Standard Schema adapter: the host converts a tool
+    // shape for the model and refuses a vendor it cannot convert.
+    expect(fake.added[0]?.input).toEqual(jsonSchema(TransferInput))
+    expect(JSON.stringify(fake.added[0]?.input)).toContain("\"maxLength\":280")
   })
+
+  it.effect("rejects malformed input before the transfer runs", () =>
+    Effect.gen(function* () {
+      const fake = editor()
+      Tools.register(fake.editor, completeTest())
+      const definition = fake.added[0]
+      if (definition === undefined) throw new Error("unreachable")
+      const outcome = yield* Effect.result(definition.execute({ sessionID: 42 }, context))
+      if (outcome._tag !== "Failure") throw new Error("expected a tool failure")
+      expect(outcome.failure.message).toContain("handoff rejected the input")
+    }))
 
   it.effect("completes a handoff through the tool seam", () =>
     Effect.gen(function* () {

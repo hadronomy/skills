@@ -1,9 +1,16 @@
 import type { ToolEditor } from "@opencode-ai/plugin/effect/tool"
 import { Tool } from "@opencode-ai/schema/tool"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { Receipt } from "./receipt.js"
-import { PointerPortable, TransferInputPortable } from "./rpc.js"
+import { jsonSchema, Pointer, TransferInput } from "./rpc.js"
 import type { Transfer } from "./transfer.js"
+
+// The host shows a tool definition to a model, so it converts the shape to
+// JSON Schema and refuses a Standard Schema adapter from a vendor it does
+// not know. Generating both faces here keeps that conversion off the host,
+// at the cost of decoding the input in this module rather than at the seam.
+const input = jsonSchema(TransferInput)
+const output = jsonSchema(Pointer)
 
 /**
  * Agent-callable transfer. Use when the user asks to continue, move, or
@@ -27,14 +34,18 @@ export const register = (editor: ToolEditor, complete: Transfer.Complete): void 
     name: "transfer",
     description:
       "Complete a session handoff from a structured intent and return a resumable pointer.",
-    input: TransferInputPortable,
-    output: PointerPortable,
+    input,
+    output,
     options: { namespace: "handoff", codemode: false },
-    execute: (input) =>
-      complete(input).pipe(
-        Effect.map((output) => ({ output })),
-        Effect.mapError((failure) =>
-          new Tool.Error({ message: `handoff stopped: ${Receipt.failure(failure)}` })),
+    execute: (raw) =>
+      Schema.decodeUnknownEffect(TransferInput)(raw).pipe(
+        Effect.mapError((issue) => new Tool.Error({ message: `handoff rejected the input: ${issue}` })),
+        Effect.flatMap((decoded) =>
+          complete(decoded).pipe(
+            Effect.mapError((failure) =>
+              new Tool.Error({ message: `handoff stopped: ${Receipt.failure(failure)}` })),
+          )),
+        Effect.map((pointer) => ({ output: pointer })),
       ),
   })
 }

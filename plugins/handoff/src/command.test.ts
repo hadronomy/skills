@@ -5,16 +5,18 @@ import { MaxGoalLength, MaxRefs } from "./rpc.js"
 
 describe("resolveGoal", () => {
   it("keeps explicit text", () => {
-    expect(Command.resolveGoal("audit", "Old title")).toBe("audit")
+    expect(Command.resolveGoal("audit", "Old title", "asked")).toBe("audit")
   })
 
   it("truncates at the contract bound", () => {
-    expect(Command.resolveGoal("x".repeat(400), undefined)).toHaveLength(MaxGoalLength)
+    expect(Command.resolveGoal("x".repeat(400), undefined, undefined)).toHaveLength(MaxGoalLength)
   })
 
-  it("falls back to the session title, then to the standing label", () => {
-    expect(Command.resolveGoal("", "Weekly review")).toBe("Weekly review")
-    expect(Command.resolveGoal("  ", undefined)).toBe("Continue this session")
+  it("falls back through title, then the last thing asked, then the label", () => {
+    expect(Command.resolveGoal("", "Weekly review", "asked")).toBe("Weekly review")
+    // A session younger than its own title still names real work.
+    expect(Command.resolveGoal("", undefined, "fix the parser")).toBe("fix the parser")
+    expect(Command.resolveGoal("  ", "  ", "  ")).toBe("Continue this session")
   })
 })
 

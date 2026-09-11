@@ -1,10 +1,12 @@
 import type { SessionImportInput } from "@opencode-ai/client/effect/api"
+import type { Model } from "@opencode-ai/schema/model"
 import { Context, Effect, Layer, Match, Schedule, Schema } from "effect"
 import type { Capture } from "./capture.js"
 import type { Intent, PointerType, RenderReason, TransferInput } from "./rpc.js"
 import { Envelope, Key, Pointer, RenderFailed, Stash } from "./rpc.js"
 import { Host } from "./host.js"
-import { orStageFailure } from "./stage.js"
+import { orFallback, orStageFailure } from "./stage.js"
+import { Transcript } from "./transcript.js"
 
 // Curried so every call site reads as the step that failed:
 // `orStageFailure(storage.set(...), renderFailed("stash"))`.
@@ -22,46 +24,58 @@ const prove = Effect.fn("Handoff.render.prove")(function* (pointer: PointerType)
   return yield* Schema.decodeEffect(Pointer)(wire)
 })
 
-// Admission prefix, mirroring the house subagent line ("You are a subagent
-// spawned by another session."). The fresh session starts with empty
-// context, so the first line names that state before the task text.
-const ADMISSION = "You are resuming work handed off from another session."
+/**
+ * How much transcript the summarizer reads, in characters. Taken from the
+ * end of the session.
+ *
+ * @category configuration
+ * @since 0.5.0
+ */
+export const ReadBudget = 40_000
 
-const brief = (sessionID: string, intent: Intent, captured: Capture.Captured): string => {
-  const where = Match.value(intent.resume).pipe(
-    Match.discriminator("mode")("export-file", () => "export-file"),
-    Match.discriminator("mode")("fork-local", (arm) =>
-      Match.value(arm.boundary).pipe(
-        Match.discriminator("type")("through", () => "through"),
-        Match.discriminator("type")("before", (before) => `before ${before.messageID}`),
-        Match.exhaustive,
-      )),
+/**
+ * How much verbatim transcript the brief carries when the summarizer fails.
+ * Smaller than the read budget: this text becomes a message in the new
+ * session rather than one model call.
+ *
+ * @category configuration
+ * @since 0.5.0
+ */
+export const FallbackBudget = 8_000
+
+// The brief is the whole inheritance. A session that starts from it has no
+// other context, so it names the work, the next move, and then the handover
+// itself. Machinery the receiver cannot act on — boundary, message count,
+// source session ID, stash key — stays in the stash and the pointer.
+const ADMISSION = [
+  "You are resuming work handed off from another session.",
+  "The handover below is your only context. The previous session is not",
+  "readable from here, so do not go looking for it.",
+].join("\n")
+
+const next = (intent: Intent): string =>
+  Match.value(intent.directive).pipe(
+    Match.when("resume", () => "Continue the work described below."),
+    Match.when("branch", () => "Branch from the work described below."),
+    Match.when("queue", () => "Hold this work until someone asks you to start."),
     Match.exhaustive,
   )
-  // The stash key stays out of agent-visible text; it travels in the
-  // stash record and the pointer, which the fresh session cannot read.
-  const resume = Match.value(intent.resume).pipe(
-    Match.discriminator("mode")(
-      "export-file",
-      () => `Resume: import the transfer file, then ${intent.directive} the work below`,
-    ),
-    Match.discriminator("mode")(
-      "fork-local",
-      (arm) =>
-        `Resume: ${arm.delivery === "queue" ? "read the queued brief, then" : "steer with the brief, then"} ${intent.directive} the work below · ${captured.messages.length} messages from ${sessionID} · boundary ${where}`,
-    ),
-    Match.exhaustive,
-  )
+
+const brief = (intent: Intent, handover: string): string => {
   const skills = intent.skills.length > 0 ? intent.skills.join(", ") : "none"
   const artifacts = intent.refs.length > 0
     ? ["Artifacts:", ...intent.refs.map((ref) => `- ${ref.kind}: ${ref.ref}`)]
     : ["Artifacts: none"]
   return [
     ADMISSION,
-    `Handoff: ${intent.goal}`,
-    resume,
+    "",
+    `Goal: ${intent.goal}`,
+    `Then: ${next(intent)}`,
     `Skills: ${skills}`,
     ...artifacts,
+    "",
+    "Handover",
+    handover.length > 0 ? handover : "The source session held no conversation to carry over.",
   ].join("\n")
 }
 
@@ -90,19 +104,45 @@ export class Service extends Context.Service<Service, {
 export const layer: Layer.Layer<
   Service,
   never,
-  Host.StorageGateway | Host.SessionGateway | Host.FileWriter
+  Host.StorageGateway | Host.SessionGateway | Host.FileWriter | Host.Summarizer
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
     const storage = yield* Host.StorageGateway
     const session = yield* Host.SessionGateway
     const files = yield* Host.FileWriter
+    const summarizer = yield* Host.Summarizer
+
+    // A failed model call must not cost the handoff its context. The tail is
+    // the same work, only longer and unsorted, which still beats a brief
+    // that names a session the receiver cannot read.
+    const handover = Effect.fn("Handoff.render.condense")(function* (
+      said: ReadonlyArray<string>,
+      model: Model.Ref | undefined,
+    ) {
+      if (said.length === 0) return ""
+      const fallback = () => Transcript.tail(said, FallbackBudget)
+      const condensed = yield* orFallback(
+        summarizer.condense(Transcript.tail(said, ReadBudget), model).pipe(
+          Effect.tapCause((cause) =>
+            Effect.logWarning("handoff: the brief fell back to the transcript", cause)),
+        ),
+        fallback,
+      )
+      return condensed.length > 0 ? condensed : fallback()
+    })
+
     return {
       pointer: Effect.fn("Handoff.render")(function* (input: TransferInput, captured: Capture.Captured) {
         const sessionID = input.sessionID
         const intent = input.intent
         const key = Key.make(`handoff/${sessionID}`)
-        const text = brief(sessionID, intent, captured)
+        // The intent can name a different model for the new session. The
+        // brief describes the old one, so the old one condenses it.
+        const text = brief(
+          intent,
+          yield* handover(Transcript.lines(captured.messages), captured.info.model),
+        )
         const count = captured.messages.length
         const resume = intent.resume
 

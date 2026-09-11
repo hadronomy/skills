@@ -14,19 +14,6 @@ const file = pointer({
   messages: 12,
 })
 
-describe("Receipt.pointer", () => {
-  it("names the session to continue in", () => {
-    expect(Receipt.pointer(fork)).toBe("Handed off 12 messages. Continue in session ses_xyz.")
-  })
-
-  it("names the file and how to import it", () => {
-    expect(Receipt.pointer(file)).toBe(
-      "Handed off 12 messages to /tmp/handoff-ses_abc.json. "
-        + "Move it, then: opencode2 import --directory <dir> <file>",
-    )
-  })
-})
-
 describe("Receipt.failure", () => {
   // Records over the reason unions, not arrays: adding a reason without a
   // sentence stops compiling here rather than shipping a blank message.
