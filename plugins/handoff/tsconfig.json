@@ -15,5 +15,5 @@
     "noEmit": true,
     "plugins": [{ "name": "@effect/language-service" }]
   },
-  "include": ["src", "index.ts"]
+  "include": ["src", "index.ts", "tui.ts", "rpc.ts"]
 }

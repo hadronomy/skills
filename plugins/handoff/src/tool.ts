@@ -1,8 +1,9 @@
 import type { ToolEditor } from "@opencode-ai/plugin/effect/tool"
 import { Tool } from "@opencode-ai/schema/tool"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
+import { Receipt } from "./receipt.js"
 import { PointerPortable, TransferInputPortable } from "./rpc.js"
-import { Transfer } from "./transfer.js"
+import type { Transfer } from "./transfer.js"
 
 /**
  * Agent-callable transfer. Use when the user asks to continue, move, or
@@ -13,13 +14,14 @@ import { Transfer } from "./transfer.js"
  * name `export-file` with an optional directory for cross-machine moves.
  * Omit agent and model to carry both over from the source session.
  *
+ * Takes the same `Complete` the slash command and the RPC handler take, so
+ * a handoff a model starts announces itself exactly like one a person typed
+ * and a watching client follows both.
+ *
  * @category combinators
  * @since 0.2.0
  */
-export const register = (
-  editor: ToolEditor,
-  live: Layer.Layer<Transfer.Service>,
-): void => {
+export const register = (editor: ToolEditor, complete: Transfer.Complete): void => {
   editor.namespace({ name: "handoff", description: "Session handoff operations" })
   editor.add({
     name: "transfer",
@@ -29,19 +31,10 @@ export const register = (
     output: PointerPortable,
     options: { namespace: "handoff", codemode: false },
     execute: (input) =>
-      Effect.gen(function* () {
-        const handoff = yield* Transfer.Service
-        return { output: yield* handoff.transfer(input) }
-      }).pipe(
-        Effect.provide(live),
-        Effect.catchTags({
-          CaptureFailed: () =>
-            Effect.fail(new Tool.Error({ message: "capture failed: empty history or lost transport" })),
-          RenderFailed: () =>
-            Effect.fail(
-              new Tool.Error({ message: "render failed: stash, session, delivery, or file write failed" }),
-            ),
-        }),
+      complete(input).pipe(
+        Effect.map((output) => ({ output })),
+        Effect.mapError((failure) =>
+          new Tool.Error({ message: `handoff stopped: ${Receipt.failure(failure)}` })),
       ),
   })
 }

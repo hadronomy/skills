@@ -39,6 +39,19 @@ The agent runtime that loads a skill: Claude Code, Codex, OpenCode. Each has its
 own install path and its own way of expressing invocation policy.
 _Avoid_: client, tool, agent (ambiguous with the model itself)
 
+**Claude Code plugin**:
+The managed bundle of promoted skills that `/plugin install` subscribes to.
+Always say the full name. Bare "plugin" is ambiguous in this repo.
+
+**OpenCode plugin**:
+A package under `plugins/`, published to npm on its own and loaded by an
+OpenCode v2 host. Not a skill, and not part of either install route.
+
+**Entrypoint**:
+One of the three modules an OpenCode host resolves per plugin: `server`, `tui`,
+`rpc`. A local directory resolves them as root-level files; a published package
+resolves them through `exports`.
+
 **Canonical store**:
 `~/.agents/skills/`, where the `skills` CLI keeps one real copy of every
 installed skill. `~/.claude/skills/` holds symlinks into it.
@@ -46,6 +59,7 @@ installed skill. `~/.claude/skills/` holds symlinks into it.
 ## Relationships
 
 - A **Bucket** holds many **Skills**
+- An **OpenCode plugin** has up to three **Entrypoints**
 - A **Skill** has one **Invocation** mode across every **Harness**
 - A **Promoted** skill has exactly one **Docs page**
 - A **Skill** may have many **Reference files**
@@ -57,3 +71,5 @@ installed skill. `~/.claude/skills/` holds symlinks into it.
   meant.
 - "install" meant both the plugin route and the CLI route. Resolved: name the
   route (**plugin install**, **CLI install**); the two are exclusive.
+- "plugin" meant both the Claude Code bundle and a package under `plugins/`.
+  Resolved: say **Claude Code plugin** or **OpenCode plugin**; never bare.

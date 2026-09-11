@@ -7,7 +7,7 @@ import { Tool } from "@opencode-ai/schema/tool"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
 import { PointerPortable, TransferInputPortable } from "./rpc.js"
-import { minimal, testLayer } from "./test-support.js"
+import { completeTest, minimal, script, testLayer } from "./test-support.js"
 import { Tools } from "./tool.js"
 
 const editor = () => {
@@ -39,7 +39,7 @@ const context = {
 describe("handoff_transfer tool", () => {
   it("registers under the handoff namespace with the contract schemas", () => {
     const fake = editor()
-    Tools.register(fake.editor, testLayer())
+    Tools.register(fake.editor, completeTest())
     expect(fake.namespaces).toEqual([{ name: "handoff", description: "Session handoff operations" }])
     expect(fake.added).toHaveLength(1)
     expect(fake.added[0]?.name).toBe("transfer")
@@ -50,7 +50,7 @@ describe("handoff_transfer tool", () => {
   it.effect("completes a handoff through the tool seam", () =>
     Effect.gen(function* () {
       const fake = editor()
-      Tools.register(fake.editor, testLayer())
+      Tools.register(fake.editor, completeTest())
       const definition = fake.added[0]
       if (definition === undefined) throw new Error("unreachable")
       const result = yield* definition.execute(minimal(), context)
@@ -62,4 +62,14 @@ describe("handoff_transfer tool", () => {
       })
     }))
 
+  it.effect("reports the failed step in words, not a tag", () =>
+    Effect.gen(function* () {
+      const fake = editor()
+      Tools.register(fake.editor, completeTest(testLayer(script({ messages: [] }))))
+      const definition = fake.added[0]
+      if (definition === undefined) throw new Error("unreachable")
+      const outcome = yield* Effect.result(definition.execute(minimal(), context))
+      if (outcome._tag !== "Failure") throw new Error("expected a tool failure")
+      expect(outcome.failure.message).toBe("handoff stopped: this session has no history to hand off")
+    }))
 })

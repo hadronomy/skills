@@ -45,9 +45,9 @@ export const layer: Layer.Layer<Service, never, Host.SessionGateway> = Layer.eff
             [gateway.context({ sessionID }), gateway.get({ sessionID })],
             { concurrency: 2 },
           ).pipe(Effect.retry(Schedule.recurs(2))),
-          () => new CaptureFailed({ op: "capture" }),
+          () => new CaptureFailed({ op: "capture", reason: "transport" }),
         )
-        if (messages.length === 0) return yield* new CaptureFailed({ op: "capture" })
+        if (messages.length === 0) return yield* new CaptureFailed({ op: "capture", reason: "empty" })
         return { messages, info }
       }),
     }

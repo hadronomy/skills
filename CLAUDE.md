@@ -24,7 +24,7 @@ For the craft of the prose itself, call the Skill tool with
 
 ## Buckets carry policy
 
-| Bucket | Ships in the plugin | Docs page | Meaning |
+| Bucket | Ships in the Claude Code plugin | Docs page | Meaning |
 |---|---|---|---|
 | `skills/engineering/` | yes | yes | Promoted. Code-facing work. |
 | `skills/productivity/` | yes | yes | Promoted. Everything else. |
@@ -45,7 +45,22 @@ npm run list       # list every SKILL.md path
 npm run changeset  # record a change for the next release
 ```
 
-Run `npm run validate` before you finish. It is the gate.
+Run `npm run validate` before you finish. It is the gate for skills.
+
+## Plugins carry their own gate
+
+`plugins/` holds OpenCode v2 plugins, which `validate` does not cover. Work
+inside a plugin directory and run all three:
+
+```bash
+bun run typecheck     # tsc, strict, exactOptionalPropertyTypes
+bun run test          # vitest, including the JSDoc doctests
+bun run diagnostics   # effect-tsgo --strict, the Effect-specific rules
+```
+
+A plugin resolves three entrypoints — `server`, `tui`, `rpc` — as root-level
+files for a local install and through `exports` for a published one. Adding an
+entrypoint means adding both, plus the `files` array and `tsconfig` include.
 
 ## Rules
 

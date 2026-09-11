@@ -99,7 +99,7 @@ describe("transfer", () => {
       const session = yield* TestSession
       const storage = yield* TestStorage
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("CaptureFailed")
+      expect(failure).toMatchObject({ _tag: "CaptureFailed", reason: "empty" })
       const calls = yield* session.calls
       expect(calls.context).toBe(1)
       const store = yield* storage.store
@@ -122,7 +122,7 @@ describe("transfer", () => {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("CaptureFailed")
+      expect(failure).toMatchObject({ _tag: "CaptureFailed", reason: "transport" })
       const calls = yield* session.calls
       expect(calls.context).toBe(3)
     }).pipe(Effect.provide(testLayer(script({ failContext: 9 })))))
@@ -154,7 +154,7 @@ describe("transfer", () => {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("RenderFailed")
+      expect(failure).toMatchObject({ _tag: "RenderFailed", reason: "stash" })
       const calls = yield* session.calls
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script(), { dieSet: true }))))
@@ -164,7 +164,7 @@ describe("transfer", () => {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("RenderFailed")
+      expect(failure).toMatchObject({ _tag: "RenderFailed", reason: "stash" })
       const calls = yield* session.calls
       expect(calls.create).toBe(0)
     }).pipe(Effect.provide(testLayer(script(), { blankGet: true }))))
@@ -174,7 +174,7 @@ describe("transfer", () => {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("RenderFailed")
+      expect(failure).toMatchObject({ _tag: "RenderFailed", reason: "deliver" })
       const calls = yield* session.calls
       expect(calls.synthetic).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ failSynthetic: true })))))
@@ -191,6 +191,18 @@ describe("transfer", () => {
       const calls = yield* session.calls
       expect(calls.create).toBe(1)
     }).pipe(Effect.provide(testLayer(script({ identity: true })))))
+
+  it.effect("carries the stash key on the brief, the record that survives", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal())
+      const [brief] = yield* session.syntheticInputs
+      expect(brief?.metadata).toEqual({ handoff: "handoff/ses_abc" })
+      // Not on the session: the plugin domain drops create metadata.
+      const created = yield* session.created
+      expect(created.metadata).toBeUndefined()
+    }).pipe(Effect.provide(testLayer())))
 
   it.effect("prefers explicit intent agent and model over source info", () =>
     Effect.gen(function* () {
@@ -217,7 +229,7 @@ describe("transfer", () => {
       const handoff = yield* Transfer.Service
       const session = yield* TestSession
       const failure = yield* Effect.flip(handoff.transfer(minimal()))
-      expect(failure._tag).toBe("RenderFailed")
+      expect(failure).toMatchObject({ _tag: "RenderFailed", reason: "create" })
       const calls = yield* session.calls
       expect(calls.create).toBe(1)
       expect(calls.synthetic).toBe(0)

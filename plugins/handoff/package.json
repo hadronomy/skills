@@ -2,7 +2,7 @@
   "name": "@hadronomy/opencode-handoff-plugin",
   "version": "0.3.1",
   "type": "module",
-  "description": "Session handoff for OpenCode v2: one RPC transfer from intent to resumable pointer.",
+  "description": "Session handoff for OpenCode v2: one RPC transfer from intent to a session you land in.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hadronomy/skills.git",
@@ -14,12 +14,15 @@
   },
   "exports": {
     ".": "./index.ts",
-    "./rpc": "./src/rpc.ts",
+    "./tui": "./tui.ts",
+    "./rpc": "./rpc.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "src",
     "index.ts",
+    "tui.ts",
+    "rpc.ts",
     "commands"
   ],
   "scripts": {
@@ -29,8 +32,9 @@
     "prepare": "command -v effect-tsgo >/dev/null 2>&1 && effect-tsgo patch --typescript --no-oxlint || echo \"skipping effect-tsgo patch: binary not installed\""
   },
   "dependencies": {
-    "@opencode-ai/plugin": "0.0.0-beta-19086",
-    "@opencode-ai/schema": "0.0.0-beta-19086",
+    "@opencode-ai/client": "0.0.0-beta-19271",
+    "@opencode-ai/plugin": "0.0.0-beta-19271",
+    "@opencode-ai/schema": "0.0.0-beta-19271",
     "effect": "4.0.0-rc.112"
   },
   "devDependencies": {

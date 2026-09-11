@@ -4,7 +4,7 @@ One install story, one wording. `README.md`, `.changeset/*`, and every page
 under `docs/` say **this** and nothing else. Change it here first, then
 propagate.
 
-## Claude Code: the plugin
+## The Claude Code plugin
 
 <canonical-block name="claude-code">
 
@@ -41,6 +41,6 @@ npx skills@latest update <name>
 
 ## The two routes are exclusive
 
-The plugin is a managed, read-only bundle you subscribe to. The CLI writes files
+The Claude Code plugin is a managed, read-only bundle you subscribe to. The CLI writes files
 you own and edit. Installing both leaves every skill present twice. Always say
 "pick one".

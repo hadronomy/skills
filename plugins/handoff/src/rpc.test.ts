@@ -134,9 +134,19 @@ describe("rpc contract", () => {
     ).toThrow()
   })
 
-  it("carries typed errors with tag and op", () => {
-    expect(new CaptureFailed({ op: "capture" })._tag).toBe("CaptureFailed")
-    expect(new RenderFailed({ op: "render" })._tag).toBe("RenderFailed")
+  it("carries typed errors with tag, op, and the reason that failed", () => {
+    const capture = new CaptureFailed({ op: "capture", reason: "empty" })
+    expect(capture._tag).toBe("CaptureFailed")
+    expect(capture.reason).toBe("empty")
+    const render = new RenderFailed({ op: "render", reason: "create" })
+    expect(render._tag).toBe("RenderFailed")
+    expect(render.reason).toBe("create")
+  })
+
+  it("refuses a reason outside the declared set", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(CaptureFailed)({ _tag: "CaptureFailed", op: "capture", reason: "vibes" })
+    ).toThrow()
   })
 
   it("registers the transfer method on the host seam", () => {
@@ -148,6 +158,10 @@ describe("rpc contract", () => {
       "CaptureFailed",
       "RenderFailed",
     ])
+  })
+
+  it("publishes one event per resume mode", () => {
+    expect(Object.keys(Handoff.events).sort()).toEqual(["exported", "opened"])
   })
 })
 
@@ -176,12 +190,16 @@ describe("portable adapters", () => {
   })
 
   it("round-trips error instances and pointers as plain JSON", async () => {
-    const failed = new CaptureFailed({ op: "capture" })
+    const failed = new CaptureFailed({ op: "capture", reason: "transport" })
     const adapter = Handoff.methods.transfer.errors?.["CaptureFailed"]
     if (adapter === undefined || !("~standard" in adapter)) throw new Error("unreachable")
-    const cause = await adapter["~standard"].validate(failed) as { issues?: unknown; value?: { op: unknown } }
+    const cause = await adapter["~standard"].validate(failed) as {
+      issues?: unknown
+      value?: { op: unknown; reason: unknown }
+    }
     expect(cause.issues).toBeUndefined()
     expect(cause.value?.op).toBe("capture")
+    expect(cause.value?.reason).toBe("transport")
     expect(Object.getPrototypeOf(cause.value)).toBe(Object.prototype)
     const pointer = await PointerPortable["~standard"].validate({
       kind: "fork-local",
