@@ -78,35 +78,99 @@ export const FileWriterLive: Layer.Layer<FileWriter> = Layer.succeed(FileWriter,
 })
 
 /**
- * Condenses a transcript into a handover brief. One capability, one call, so
- * a test swaps the model for a fixed string.
+ * What the summarizer needs to write one handover.
+ *
+ * The purpose travels with the transcript. A handover written for a stated
+ * goal carries what that work needs. One written for a guess stays even,
+ * rather than narrow onto a label nobody chose.
+ *
+ * @category models
+ * @since 0.8.0
+ */
+export interface CondenseRequest {
+  readonly transcript: string
+  /** What the next session is for. */
+  readonly goal: string
+  /** Whether a person named that purpose, or the plugin read it off the session. */
+  readonly stated: boolean
+  /** Artifacts the brief already lists, so the handover points instead of retelling. */
+  readonly artifacts: ReadonlyArray<string>
+  readonly model: Model.Ref | undefined
+}
+
+/**
+ * Condenses a transcript into a handover. One capability, one call, so a test
+ * swaps the model for a fixed string.
  *
  * @category tags
  * @since 0.5.0
  */
 export class Summarizer extends Context.Service<Summarizer, {
-  readonly condense: (
-    transcript: string,
-    model: Model.Ref | undefined,
-  ) => Effect.Effect<string, unknown>
+  readonly condense: (request: CondenseRequest) => Effect.Effect<string, unknown>
 }>()("@hadronomy/handoff/Summarizer") {}
 
-// Written for a reader with no history that cannot ask a question. The shape
-// is prose, stated as a ban rather than a list: a bulleted brief invites a
-// model to fill the bullets back as a form, and a small one answers in JSON.
+// The summarizer reads this, so it is written the way an agent document is
+// written: the target behaviour stated outright, and the shape named rather
+// than banned. A ban spends attention on the thing it forbids, and `structured`
+// in render.ts already refuses an answer that comes back as a form.
+//
+// The instruction sits after the transcript. A long body pushes an opening
+// instruction out of reach, and a model answers the last thing it reads.
 const PROMPT = [
-  "Write a handover note for another agent that continues this work.",
-  "It starts with no history and cannot ask anyone what happened.",
+  "Write the handover the next agent reads to continue this work.",
+  "It starts with no history.",
   "",
-  "Write four to eight plain sentences of continuous prose.",
-  "Do not write JSON. Do not write headings, bullets, labels, or key names.",
-  "Do not greet and do not sign off.",
+  "Write two paragraphs of plain prose. Use at most six sentences in each.",
+  "The first paragraph says where the work stands. Give what is done, what",
+  "must stay decided, and what is still broken.",
+  "The second paragraph says what to do next, in the order to do it.",
   "",
-  "Say what the work is, what is finished, what is left to do next, and any",
-  "decision that must not be undone. Name real files, commands, and",
-  "identifiers exactly as the session wrote them.",
+  "Name every file, command, identifier, and number exactly as the session",
+  "wrote it. Point at an artifact by its path or its URL. Leave what it holds",
+  "for the next agent to read there.",
   "",
-  "The session transcript follows.",
+  "Keep credentials, tokens, and private data out. This text becomes the",
+  "first prompt of another session.",
+  "",
+  "Answer with the two paragraphs alone.",
+].join("\n")
+
+// A stated goal earns a handover written for it. An inferred one is the plugin
+// reading the room, and writing hard to a guess covers the wrong half of the
+// session.
+const purpose = (request: CondenseRequest): ReadonlyArray<string> =>
+  request.stated
+    ? [
+      "",
+      `The next session exists to: ${request.goal}`,
+      "Write for that work. Carry what it needs in full.",
+    ]
+    : [
+      "",
+      "Nobody named what the next session is for.",
+      `"${request.goal}" is read off the session, not asked for.`,
+      "Cover the whole session evenly.",
+    ]
+
+const pointers = (request: CondenseRequest): ReadonlyArray<string> =>
+  request.artifacts.length === 0 ? [] : [
+    "",
+    `The brief lists these artifacts: ${request.artifacts.join(", ")}`,
+    "Refer to each by name alone. The next agent opens them.",
+  ]
+
+// The transcript is fenced. A session full of prompts and shell output reads
+// like instruction, so the markers say which part is the work.
+const ask = (request: CondenseRequest): string => [
+  "A session transcript follows, between the two markers.",
+  "",
+  "--- transcript starts ---",
+  request.transcript,
+  "--- transcript ends ---",
+  "",
+  PROMPT,
+  ...purpose(request),
+  ...pointers(request),
 ].join("\n")
 
 /**
@@ -123,10 +187,10 @@ export const SummarizerLive = (
     // The source session's own model writes the brief. Omitting it leaves
     // the host to pick a default, and it fails outright where no default
     // exists: "No model specified and no supported model is available".
-    condense: (transcript, model) =>
+    condense: (request) =>
       generate.text({
-        prompt: `${PROMPT}\n${transcript}`,
-        ...(model === undefined ? {} : { model }),
+        prompt: ask(request),
+        ...(request.model === undefined ? {} : { model: request.model }),
       }).pipe(Effect.map((result) => result.text.trim())),
   })
 

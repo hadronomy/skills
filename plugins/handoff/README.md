@@ -92,14 +92,36 @@ The brief is the whole inheritance. A session that starts from it has no other
 context, so it carries the work itself, not a pointer to work held elsewhere.
 
 Render condenses the source conversation with the model that session was
-using. The brief then names the goal, the next move, the skills, the
-artifacts, and the condensed handover. Machinery the receiver cannot act on
-stays out: the boundary, the message count, the stash key, and the source
-session ID live in the stash and the pointer.
+using. The brief then names the goal, the next move, the skills to invoke,
+the artifacts to open, and the condensed handover. Machinery the receiver
+cannot act on stays out: the boundary, the message count, the stash key, and
+the source session ID live in the stash and the pointer.
+
+A section with nothing in it does not appear. `Skills: none` costs a reader
+attention and says nothing.
+
+The brief points at work instead of retelling it. `src/artifacts.ts` reads
+file paths, commit shas, issue refs, and links straight out of the
+conversation, so every pointer is what the session wrote. A model asked for
+the same list paraphrases a path or invents one. The list takes what a caller
+named first, then what the conversation named, capped at `MaxListed`.
+
+Precision beats recall. A pointer that only looks like a path costs the next
+agent a failed read, so `e.g.`, `v1.2`, and a bare `1234567` stay out. A
+query string is dropped with it, because that is where an access token rides.
 
 If the model call fails, the brief carries the tail of the conversation
 verbatim instead, and the server logs a warning. A failed call costs the brief
 its polish, never its content.
+
+The summarizer prompt is written the way an agent document is written. The
+transcript sits between two markers, and the instruction follows it, because
+a model answers the last thing it reads. The prompt states the shape it wants
+and names no shape it refuses: a ban spends attention on the thing it forbids,
+and `structured()` in `src/render.ts` refuses an answer that arrives as a form.
+The purpose travels with the transcript. A handover written for a stated goal
+carries what that work needs. One written for a guess covers the session
+evenly.
 
 A goal you typed and a goal the plugin read off the session are different
 things, and `stated` tells them apart. On an inferred goal the brief says
@@ -203,6 +225,7 @@ src/rpc.ts        transfer contract: shapes, bounds, errors, events, the define
 src/command.ts    command input builders, namespaced as `Command`
 src/receipt.ts    failure and chip text, namespaced as `Receipt`
 src/transcript.ts host messages to plain text, namespaced as `Transcript`
+src/artifacts.ts  artifact pointers read out of a transcript, as `Artifacts`
 src/tool.ts       agent-callable transfer tool surface
 src/host.ts       host boundary: session, storage, file, and summarizer tags
 src/stage.ts      interrupt-preserving failure and fallback converters

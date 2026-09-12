@@ -2,11 +2,12 @@ import type { SessionImportInput } from "@opencode-ai/client/effect/api"
 import type { Model } from "@opencode-ai/schema/model"
 import { Context, Effect, Layer, Match, Schedule, Schema } from "effect"
 import type { Capture } from "./capture.js"
-import type { Intent, PointerType, RenderReason, TransferInput } from "./rpc.js"
+import type { ArtifactRef, Intent, PointerType, RenderReason, TransferInput } from "./rpc.js"
 import { Envelope, keyFor, Pointer, RenderFailed, Stash } from "./rpc.js"
 import { Host } from "./host.js"
 import { Receipt } from "./receipt.js"
 import { orFallback, orStageFailure } from "./stage.js"
+import { Artifacts } from "./artifacts.js"
 import { Transcript } from "./transcript.js"
 
 // Curried so every call site reads as the step that failed:
@@ -49,14 +50,16 @@ export const ReadBudget = 40_000
  */
 export const FallbackBudget = 8_000
 
-// The brief is the whole inheritance. A session that starts from it has no
-// other context, so it names the work, the next move, and then the handover
-// itself. Machinery the receiver cannot act on — boundary, message count,
-// source session ID, stash key — stays in the stash and the pointer.
+// The brief is the whole inheritance, and it is read by an agent, so it is
+// written like one: the target stated outright, every line load-bearing.
+//
+// It says where the context ends rather than forbidding a search for more.
+// Naming the source session was what sent a reader hunting for it, and that
+// name is gone. Machinery the receiver cannot act on — boundary, message
+// count, source session ID, stash key — stays in the stash and the pointer.
 const ADMISSION = [
   "You are resuming work handed off from another session.",
-  "The handover below is your only context. The previous session is not",
-  "readable from here, so do not go looking for it.",
+  "Everything you know about this work is in the handover below.",
 ].join("\n")
 
 // An inferred goal is a guess the plugin read off the session, not an
@@ -72,23 +75,30 @@ const next = (intent: Intent): string =>
       Match.exhaustive,
     )
 
-const brief = (intent: Intent, handover: string): string => {
-  const skills = intent.skills.length > 0 ? intent.skills.join(", ") : "none"
-  const artifacts = intent.refs.length > 0
-    ? ["Artifacts:", ...intent.refs.map((ref) => `- ${ref.kind}: ${ref.ref}`)]
-    : ["Artifacts: none"]
-  return [
+// An empty line costs the reader attention and tells it nothing, so a section
+// with nothing in it does not appear. Each label says what to do with what
+// follows, because a list and its instruction read as one thing or neither.
+const brief = (
+  intent: Intent,
+  refs: ReadonlyArray<ArtifactRef>,
+  handover: string,
+): string =>
+  [
     ADMISSION,
     "",
     `Goal: ${intent.goal}`,
     `Then: ${next(intent)}`,
-    `Skills: ${skills}`,
-    ...artifacts,
+    ...(intent.skills.length === 0
+      ? []
+      : [`Skills to invoke: ${intent.skills.join(", ")}`]),
+    ...(refs.length === 0 ? [] : [
+      "Artifacts, open these before you act:",
+      ...refs.map((ref) => `- ${ref.kind}: ${ref.ref}`),
+    ]),
     "",
     "Handover",
     handover.length > 0 ? handover : "The source session held no conversation to carry over.",
   ].join("\n")
-}
 
 /**
  * Condenses the brief, stashes, then relocates. Fork-local preloads the
@@ -129,12 +139,20 @@ export const layer: Layer.Layer<
     // that names a session the receiver cannot read.
     const handover = Effect.fn("Handoff.render.condense")(function* (
       said: ReadonlyArray<string>,
+      intent: Intent,
+      refs: ReadonlyArray<ArtifactRef>,
       model: Model.Ref | undefined,
     ) {
       if (said.length === 0) return ""
       const fallback = () => Transcript.tail(said, FallbackBudget)
       const condensed = yield* orFallback(
-        summarizer.condense(Transcript.tail(said, ReadBudget), model).pipe(
+        summarizer.condense({
+          transcript: Transcript.tail(said, ReadBudget),
+          goal: intent.goal,
+          stated: intent.stated,
+          artifacts: refs.map((ref) => ref.ref),
+          model,
+        }).pipe(
           Effect.tapCause((cause) =>
             Effect.logWarning("handoff: the brief fell back to the transcript", cause)),
         ),
@@ -150,11 +168,17 @@ export const layer: Layer.Layer<
         const sessionID = input.sessionID
         const intent = input.intent
         const key = keyFor(sessionID)
+        const said = Transcript.lines(captured.messages)
+        // What a caller named, then what the conversation named. A copied
+        // path is exact where a model paraphrases one, so the list is read
+        // off the session rather than asked for.
+        const refs = Artifacts.listed(intent.refs, said)
         // The intent can name a different model for the new session. The
         // brief describes the old one, so the old one condenses it.
         const text = brief(
           intent,
-          yield* handover(Transcript.lines(captured.messages), captured.info.model),
+          refs,
+          yield* handover(said, intent, refs, captured.info.model),
         )
         const count = captured.messages.length
         const resume = intent.resume

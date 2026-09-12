@@ -100,13 +100,22 @@ export const sessionOfKey = (key: string): string | undefined =>
   key.startsWith(KeyPrefix) ? key.slice(KeyPrefix.length) : undefined
 
 /**
- * Artifact kind. Refs point at work items and files; they never paste
- * content.
+ * Artifact kind. A ref points at work and the reader opens it, so a brief
+ * names the pointer and carries none of what it holds. `url` is the catch-all
+ * for a link that is not a work item.
  *
  * @category models
  * @since 0.2.0
  */
-export const ArtifactKind = Schema.Literals(["spec", "plan", "adr", "issue", "commit", "file"])
+export const ArtifactKind = Schema.Literals([
+  "spec",
+  "plan",
+  "adr",
+  "issue",
+  "commit",
+  "file",
+  "url",
+])
 export type ArtifactKind = typeof ArtifactKind.Type
 
 /**
