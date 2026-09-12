@@ -36,12 +36,26 @@ back into the source session. The handoff announces itself, and the terminal
 client watching that session opens the new session and focuses it. Another
 window keeps its own work.
 
+The new session waits. It holds the brief and runs nothing until you send a
+message. You land in front of the composer, with its model and agent pickers,
+and the first move is yours. Set `start` true to hand work to a session that
+begins without you.
+
+Mention an agent to hand the work to it: `/handoff @reviewer finish the
+audit`. The agent carries its own model, so this is also how you move a
+handoff to a different model without a second picker.
+
 Text after `/handoff` becomes the goal. Bare `/handoff` falls back to the
 session title, then to the last thing you asked for, then to a standing label.
 A session titles itself a few seconds after its first reply, so the third step
 is what names the work in a young session. Delivery, attachments, skills,
 agent, and model arrive from context, so the command takes no flags. Anything
 vaguer belongs to the guided version below.
+
+An agent calling `handoff_transfer` chooses too. The tool description lists
+the agents this machine has installed, with what each one is for. The schema
+says what `agent`, `model`, `stated`, and `start` do. An agent that decides
+the next stretch of work suits a reviewer hands it to the reviewer.
 
 For the guided version, copy `commands/handoff-interview.md` from the package
 into a `commands` directory. Then run `/handoff-interview`. The agent reads the
@@ -86,6 +100,12 @@ session ID live in the stash and the pointer.
 If the model call fails, the brief carries the tail of the conversation
 verbatim instead, and the server logs a warning. A failed call costs the brief
 its polish, never its content.
+
+A goal you typed and a goal the plugin read off the session are different
+things, and `stated` tells them apart. On an inferred goal the brief says
+nobody named the next step, and tells the new session to summarize and ask.
+Without that, `/handoff` from an open-ended thread hands over a guess phrased
+as an instruction.
 
 Reasoning and tool parts never reach the brief. They are the model talking to
 itself, and they crowd out what the next agent can act on.

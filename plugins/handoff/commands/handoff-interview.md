@@ -12,7 +12,11 @@ Fill the `handoff_transfer` tool input without asking:
 - Refs from attached files as `{ kind: "file", ref: uri }`; they point, never paste.
 - Skills from invoked skills.
 - Steer delivery, fork-local mode.
-- Omit agent and model to carry both over from the source session.
+- `stated` true, because the person is telling you the goal here.
+- Leave `start` false. The person lands in a waiting session and decides there.
+- Omit agent and model to carry both over from the source session. Name one
+  when the next stretch of work suits a different agent or model better, and
+  say which you picked and why.
 
 ## Ask
 

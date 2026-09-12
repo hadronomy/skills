@@ -28,9 +28,18 @@ export const Resume = Schema.Union([
     delivery: Schema.Literals(["steer", "queue"]).pipe(
       Schema.withDecodingDefaultKey(Effect.succeed("steer" as const)),
     ),
-    resume: Schema.Boolean.pipe(
-      Schema.withDecodingDefaultKey(Effect.succeed(true)),
-    ),
+    /**
+     * Whether the new session runs the moment it receives the brief.
+     *
+     * Defaults to false. A handoff lands you in front of a session that is
+     * waiting, which is where the model and agent pickers are, and which is
+     * where you decide what happens next. Set true to hand work to a session
+     * that starts without you.
+     */
+    start: Schema.Boolean.annotate({
+      description:
+        "Whether the new session runs at once. Leave false to land a person in a waiting session. Set true only when the work needs no further direction.",
+    }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   }),
   Schema.Struct({
     mode: Schema.Literal("export-file"),
@@ -138,13 +147,33 @@ export const MaxRefs = 8
  */
 export const Intent = Schema.Struct({
   goal: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(MaxGoalLength))),
+  /**
+   * Whether a person named the goal, rather than the plugin reading it off
+   * the session. Defaults to true, because a caller that fills `goal` is
+   * stating one. `/handoff` with no text sets it false, and the brief then
+   * asks instead of acting on a guess.
+   */
+  stated: Schema.Boolean.annotate({
+    description:
+      "Whether a person named the goal. Set false when you inferred it, and the brief asks the next session what to do instead of acting on the guess.",
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   directive: Schema.Literals(["resume", "branch", "queue"]),
   refs: Schema.Array(ArtifactRef).pipe(Schema.check(Schema.isMaxLength(MaxRefs))),
   skills: Schema.Array(Schema.String).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([] as Array<string>)),
   ),
-  agent: Schema.optional(Agent.ID),
-  model: Schema.optional(Model.Ref),
+  agent: Schema.optional(
+    Agent.ID.annotate({
+      description:
+        "Agent id to run the new session. Omit to keep the agent the source session was using. Pick a different one when the next stretch of work suits it better, such as a review agent for a review.",
+    }),
+  ),
+  model: Schema.optional(
+    Model.Ref.annotate({
+      description:
+        "Model for the new session, as providerID and id. Omit to take the chosen agent's own model, or the source session's when no agent is named. Name one to move the work to a larger or a cheaper model.",
+    }),
+  ),
   resume: Resume.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed({ mode: "fork-local" } as const)),
   ),
@@ -169,7 +198,7 @@ export interface Intent extends Schema.Schema.Type<typeof Intent> {}
  * out.intent.resume.mode // => "fork-local"
  * out.intent.resume.boundary // => { type: "through" }
  * out.intent.resume.delivery // => "steer"
- * out.intent.resume.resume // => true
+ * out.intent.resume.start // => false
  * ```
  *
  * @category models

@@ -1,5 +1,6 @@
 import { Plugin } from "@opencode-ai/plugin/effect"
 import type { CommandInvocation } from "@opencode-ai/plugin/effect/command"
+import type { Agent } from "@opencode-ai/schema/agent"
 import { Effect, Layer } from "effect"
 import { Capture } from "./capture.js"
 import { Command } from "./command.js"
@@ -73,8 +74,18 @@ export default Plugin.define({
           ),
       })
 
+      // The editor is synchronous by contract, so the agent list loads here
+      // and the tool description is built from what this machine has.
+      const installed = yield* ctx.agent.list().pipe(
+        Effect.map((listed) => listed.data.filter((agent) => !agent.hidden)),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("handoff: the agent list did not load", cause).pipe(
+            Effect.as([] as ReadonlyArray<Agent.Info>),
+          )),
+      )
+
       yield* ctx.tool.transform((editor) => {
-        Tools.register(editor, complete)
+        Tools.register(editor, complete, installed)
       })
 
       yield* ctx.command.transform((editor) => {
@@ -95,10 +106,21 @@ export default Plugin.define({
                   yield* ctx.session.context({ sessionID: invocation.sessionID }),
                 ),
               }
+            // `@reviewer` in the composer picks the agent, and an agent
+            // carries its own model. Reusing that picker beats adding one.
+            const mentioned = Command.chosenAgent(invocation.prompt.agents)
+            const chosen = mentioned === undefined
+              ? undefined
+              : (yield* ctx.agent.list()).data.find((agent) => agent.name === mentioned)
             yield* complete({
               sessionID: invocation.sessionID,
               intent: {
                 goal: Command.resolveGoal(text, named.title, named.asked),
+                // Text is the only source a person states outright. A title
+                // or an old message is the plugin reading the room.
+                stated: text.length > 0,
+                ...(chosen === undefined ? {} : { agent: chosen.id }),
+                ...(chosen?.model === undefined ? {} : { model: chosen.model }),
                 directive: "resume",
                 refs: Command.collectRefs(invocation.prompt.files),
                 skills: Command.collectSkills(invocation.prompt.skills),
@@ -106,7 +128,9 @@ export default Plugin.define({
                   mode: "fork-local",
                   boundary: { type: "through" },
                   delivery: invocation.delivery,
-                  resume: true,
+                  // Land in a session that waits. The composer and its model
+                  // and agent pickers are right there, before anything runs.
+                  start: false,
                 },
               },
             })

@@ -179,7 +179,7 @@ describe("portable adapters", () => {
     if (result.value.intent.resume.mode !== "fork-local") throw new Error("unreachable")
     expect(result.value.intent.resume.boundary).toEqual({ type: "through" })
     expect(result.value.intent.resume.delivery).toBe("steer")
-    expect(result.value.intent.resume.resume).toBe(true)
+    expect(result.value.intent.resume.start).toBe(false)
   })
 
   it("resolves garbage to issues instead of throwing", async () => {

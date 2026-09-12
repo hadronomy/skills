@@ -91,23 +91,22 @@ export class Summarizer extends Context.Service<Summarizer, {
   ) => Effect.Effect<string, unknown>
 }>()("@hadronomy/handoff/Summarizer") {}
 
-// Written for a reader that has no history and cannot ask a question. It
-// names the four things a next agent needs before it can touch anything.
+// Written for a reader with no history that cannot ask a question. The shape
+// is prose, stated as a ban rather than a list: a bulleted brief invites a
+// model to fill the bullets back as a form, and a small one answers in JSON.
 const PROMPT = [
-  "Condense the session below into a handover brief for another agent.",
-  "The agent starts with no history and cannot ask the previous one.",
+  "Write a handover note for another agent that continues this work.",
+  "It starts with no history and cannot ask anyone what happened.",
   "",
-  "Cover, in this order:",
-  "- What the work is.",
-  "- What is done already.",
-  "- What remains, as concrete next steps.",
-  "- Any decision the next agent must not undo, and why.",
+  "Write four to eight plain sentences of continuous prose.",
+  "Do not write JSON. Do not write headings, bullets, labels, or key names.",
+  "Do not greet and do not sign off.",
   "",
-  "Write at most 250 words of plain sentences. Write no heading, no",
-  "greeting, and no closing line. Name real files, commands, and",
+  "Say what the work is, what is finished, what is left to do next, and any",
+  "decision that must not be undone. Name real files, commands, and",
   "identifiers exactly as the session wrote them.",
   "",
-  "Session:",
+  "The session transcript follows.",
 ].join("\n")
 
 /**

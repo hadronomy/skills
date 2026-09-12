@@ -13,6 +13,11 @@ import { Transcript } from "./transcript.js"
 // `orStageFailure(storage.set(...), renderFailed("stash"))`.
 const renderFailed = (reason: RenderReason) => () => new RenderFailed({ op: "render", reason })
 
+const structured = (text: string): boolean => {
+  const head = text.trimStart().charAt(0)
+  return head === "{" || head === "["
+}
+
 const gate = Effect.fn("Handoff.render.gate")(function* (value: unknown) {
   return yield* Schema.decodeUnknownEffect(Schema.Json)(value).pipe(
     Effect.mapError(renderFailed("encode")),
@@ -54,13 +59,18 @@ const ADMISSION = [
   "readable from here, so do not go looking for it.",
 ].join("\n")
 
+// An inferred goal is a guess the plugin read off the session, not an
+// instruction. Acting on it is how a handoff from an open-ended thread ends
+// up doing work nobody asked for, so the brief asks instead.
 const next = (intent: Intent): string =>
-  Match.value(intent.directive).pipe(
-    Match.when("resume", () => "Continue the work described below."),
-    Match.when("branch", () => "Branch from the work described below."),
-    Match.when("queue", () => "Hold this work until someone asks you to start."),
-    Match.exhaustive,
-  )
+  intent.stated === false
+    ? "Nobody named the next step. The goal above is read from the session, not asked for. Summarize the handover, then ask what to do before you act."
+    : Match.value(intent.directive).pipe(
+      Match.when("resume", () => "Continue the work described below."),
+      Match.when("branch", () => "Branch from the work described below."),
+      Match.when("queue", () => "Hold this work until someone asks you to start."),
+      Match.exhaustive,
+    )
 
 const brief = (intent: Intent, handover: string): string => {
   const skills = intent.skills.length > 0 ? intent.skills.join(", ") : "none"
@@ -130,7 +140,9 @@ export const layer: Layer.Layer<
         ),
         fallback,
       )
-      return condensed.length > 0 ? condensed : fallback()
+      // A model that answers a brief with JSON has filled a form, not written
+      // a handover. The transcript is worth more than a shape with no prose.
+      return condensed.length > 0 && !structured(condensed) ? condensed : fallback()
     })
 
     return {
@@ -235,7 +247,7 @@ export const layer: Layer.Layer<
                   description: Receipt.origin(captured.info.title, intent.goal),
                   metadata: { handoff: key },
                   delivery: arm.delivery,
-                  resume: arm.resume,
+                  resume: arm.start,
                 }),
                 renderFailed("deliver"),
               )

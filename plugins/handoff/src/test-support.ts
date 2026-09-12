@@ -206,7 +206,7 @@ export class TestSummarizer extends Context.Service<TestSummarizer, {
   readonly models: Effect.Effect<ReadonlyArray<unknown>>
 }>()("Handoff/TestSummarizer") {}
 
-export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean } = {}) =>
+export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean; json?: boolean } = {}) =>
   Layer.effectContext(
     Effect.gen(function* () {
       const seen = yield* Ref.make<Array<string>>([])
@@ -218,6 +218,7 @@ export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean } = {
             yield* Ref.update(models, (current) => [...current, model])
             if (opts.fail) return yield* Effect.die(new TransportFault({ message: "model" }))
             if (opts.blank) return ""
+            if (opts.json) return '{"what_is_done": "things"}'
             return "CONDENSED"
           }),
       })
@@ -232,7 +233,7 @@ export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean } = {
 export const testLayer = (
   sessionScript: SessionScript = script(),
   storageOpts: { dieSet?: boolean; blankGet?: boolean } = {},
-  summarizerOpts: { fail?: boolean; blank?: boolean } = {},
+  summarizerOpts: { fail?: boolean; blank?: boolean; json?: boolean } = {},
 ) => {
   // Provide discards the fakes' outputs, so merge them back: the app sees
   // the gateways while tests keep the probes. One shared reference means
