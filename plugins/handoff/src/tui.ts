@@ -4,7 +4,7 @@
 // is the same `define` with no runtime imports at all.
 import { define } from "@opencode-ai/plugin/tui/plugin"
 import { Receipt } from "./receipt.js"
-import { Handoff, sessionOfKey } from "./rpc.js"
+import { Handoff } from "./rpc.js"
 
 /**
  * Terminal client plugin. The server completes the handoff; this puts the
@@ -14,6 +14,10 @@ import { Handoff, sessionOfKey } from "./rpc.js"
  * It adds no trigger of its own. `/handoff`, `/handoff-interview`, and an
  * HTTP caller all announce through the same contract events, so this follows
  * every one of them and cannot drift from what the server did.
+ *
+ * Everything here runs at setup, outside the host's component tree. Anything
+ * that reads a Solid context belongs in a slot render instead: a throw in
+ * this function loses the whole plugin, not one feature of it.
  */
 export default define({
   id: "handoff",
@@ -27,56 +31,11 @@ export default define({
       return route.type === "session" && route.sessionID === sessionID
     }
 
-    // The brief stamps `metadata.handoff` with the stash key, and that key
-    // embeds the session it came from. Reading it back beats keeping a map:
-    // it works for a handoff any client started, and it survives a restart.
-    const originOf = (sessionID: string): string | undefined => {
-      const stamped = [
-        ...context.data.session.message.list(sessionID),
-        ...context.data.session.pending.list(sessionID).map((item) =>
-          item.type === "synthetic" ? item.payload : undefined
-        ),
-      ]
-      for (const record of stamped) {
-        const key = record?.metadata?.["handoff"]
-        if (typeof key !== "string") continue
-        const source = sessionOfKey(key)
-        if (source !== undefined) return source
-      }
-      return undefined
-    }
-
-    // Reads the origin of whatever session the person is looking at.
-    const current = (): string | undefined => {
-      const route = context.ui.router.current()
-      return route.type === "session" ? originOf(route.sessionID) : undefined
-    }
-
     const open = (sessionID: string) => {
       if (!context.ui.tabs.open(sessionID)) {
         context.ui.router.navigate({ type: "session", sessionID })
       }
     }
-
-    context.keymap.layer(() => ({
-      commands: [
-        {
-          id: "handoff.origin",
-          title: "Go to the session this was handed off from",
-          group: "Handoff",
-          // Inert outside a handed-off session, so the binding stays free
-          // everywhere it means nothing.
-          enabled: () => current() !== undefined,
-          bind: "<leader>h",
-          palette: true,
-          run: () => {
-            const source = current()
-            if (source === undefined) return false
-            open(source)
-          },
-        },
-      ],
-    }))
 
     const stop = [
       handoff.events.on("opened", (event) => {

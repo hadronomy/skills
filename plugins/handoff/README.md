@@ -113,18 +113,26 @@ came from: `handoff from "Casual greeting check-in"`. A session younger than
 its own title falls back to the handoff goal.
 
 The brief also stamps `metadata.handoff` with the stash key, and every key is
-`handoff/<source session id>`. The terminal client reads the origin back out
-of it. `<leader>h` opens the source session, and so does the command palette
-entry "Go to the session this was handed off from". The command needs no
-stored state, and it works for a handoff that any client started.
+`handoff/<source session id>`. `sessionOfKey` reads the origin back out of it,
+so a client can find where a brief came from without keeping a map.
 
-The command stays disabled outside a handed-off session, so the binding is
-free everywhere it means nothing. Bind it elsewhere by its id,
-`handoff.origin`.
+The transcript line is not clickable, and no keybinding jumps back to the
+source. The client plugin surface publishes no slot inside the message list
+and no mouse event, so nothing attaches behaviour to a rendered message.
+A keybinding needs `keymap.layer`, and that reads a Solid context: it works
+in a slot render and throws in `setup`.
 
-The transcript line itself is not clickable. The client plugin surface
-publishes no slot inside the message list and no mouse event, so nothing can
-attach behaviour to a rendered message.
+## The client runs outside the component tree
+
+`setup` runs before the host mounts its UI. Faces backed by a Solid context
+throw there. `keymap.layer` is the one this plugin reached for, and the host
+answered `Keymap.Provider is missing`.
+
+A throw in `setup` costs the whole plugin. The host marks it `Failed`, and
+every event subscription goes with it, so a handoff stops opening its session
+too. `src/tui.test.ts` runs `setup` against a context whose `keymap`, `data`,
+`storage`, and `renderer` throw on any access, which fails the moment the
+plugin reaches for one.
 
 `sessionID` is the source. Subscribe with the contract, never a string:
 
