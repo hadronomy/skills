@@ -55,4 +55,31 @@ export const collectRefs = (files: PromptInput.Prompt["files"]): Array<ArtifactR
 export const collectSkills = (skills: PromptInput.Prompt["skills"]): Array<string> =>
   (skills ?? []).map((skill) => skill.id)
 
+/**
+ * Picks the agent a person mentioned in the composer, if they mentioned one.
+ *
+ * `@reviewer` in the prompt is the picker the client already has, so a
+ * handoff reuses it rather than inventing a second one. Only the first
+ * mention counts: a handoff goes to one session, and one session runs one
+ * agent.
+ *
+ * **Example** (The first mention wins, and no mention is no choice)
+ *
+ * ```ts import.meta.vitest
+ * import { chosenAgent } from "./command.js"
+ *
+ * chosenAgent([{ name: "reviewer" }, { name: "build" }] as never) // => "reviewer"
+ * chosenAgent(undefined) // => undefined
+ * ```
+ *
+ * @category combinators
+ * @since 0.7.0
+ */
+export const chosenAgent = (
+  agents: PromptInput.Prompt["agents"],
+): string | undefined => {
+  const name = agents?.[0]?.name.trim()
+  return name !== undefined && name.length > 0 ? name : undefined
+}
+
 export * as Command from "./command.js"

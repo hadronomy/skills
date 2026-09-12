@@ -36,7 +36,8 @@ describe("transfer", () => {
       const inputs = yield* session.syntheticInputs
       const injected = inputs[0]
       expect(injected.delivery).toBe("steer")
-      expect(injected.resume).toBe(true)
+      // The new session waits. Starting it is the person's move, not ours.
+      expect(injected.resume).toBe(false)
       expect(injected.text).toContain("audit")
     }).pipe(Effect.provide(testLayer())))
 
@@ -303,6 +304,30 @@ describe("transfer", () => {
       expect(brief?.description).toBe('handoff from "review the parser"')
     }).pipe(Effect.provide(testLayer())))
 
+  it.effect("asks instead of acting when the goal was not stated", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: { goal: "Weekly review", stated: false, directive: "resume", refs: [] },
+      })
+      yield* handoff.transfer(input)
+      const [brief] = yield* session.syntheticInputs
+      expect(brief?.text).toContain("Nobody named the next step")
+      expect(brief?.text).toContain("ask what to do before you act")
+      expect(brief?.text).not.toContain("Continue the work described below")
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("acts on a goal a person stated", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal("finish the CSV fix"))
+      const [brief] = yield* session.syntheticInputs
+      expect(brief?.text).toContain("Then: Continue the work described below.")
+    }).pipe(Effect.provide(testLayer())))
+
   it.effect("condenses the conversation, not the tool noise", () =>
     Effect.gen(function* () {
       const handoff = yield* Transfer.Service
@@ -331,6 +356,18 @@ describe("transfer", () => {
       // A failed model call must not cost the handoff its context.
       expect(injected?.text).toContain("Handover\nUser: hello\nUser: world")
     }).pipe(Effect.provide(testLayer(script(), {}, { fail: true }))))
+
+  it.effect("falls back when the summarizer answers with a filled-in form", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      yield* handoff.transfer(minimal())
+      const [injected] = yield* session.syntheticInputs
+      // A small model answers a bulleted brief with JSON. That is a shape,
+      // not a handover, and the transcript beats it.
+      expect(injected?.text).toContain("Handover\nUser: hello\nUser: world")
+      expect(injected?.text).not.toContain("what_is_done")
+    }).pipe(Effect.provide(testLayer(script(), {}, { json: true }))))
 
   it.effect("falls back to the transcript when the summarizer returns nothing", () =>
     Effect.gen(function* () {
