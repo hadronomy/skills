@@ -1,5 +1,21 @@
 # @hadronomy/opencode-handoff-plugin
 
+## 0.7.0
+
+### Minor Changes
+
+- [#18](https://github.com/hadronomy/skills/pull/18) [`3c2b5e4`](https://github.com/hadronomy/skills/commit/3c2b5e4879ae0b3bdcb55e2a58af9283f67d0367) Thanks [@hadronomy](https://github.com/hadronomy)! - `/handoff @reviewer finish the audit` hands the work to that agent, and the agent carries its own model. The composer already has an agent picker, and `invocation.prompt.agents` already carries the mention, so a handoff reuses that picker rather than inventing a second one.
+
+  An agent calling `handoff_transfer` chooses too. The tool description lists the agents installed on this machine with what each one is for, loaded before registration, and `agent`, `model`, `stated`, and `start` carry descriptions into the JSON Schema a model reads. An agent that decides the next stretch of work suits a reviewer can hand it to the reviewer.
+
+- [#18](https://github.com/hadronomy/skills/pull/18) [`3c2b5e4`](https://github.com/hadronomy/skills/commit/3c2b5e4879ae0b3bdcb55e2a58af9283f67d0367) Thanks [@hadronomy](https://github.com/hadronomy)! - A handoff lands you in a session that waits. `intent.resume.resume` is now `intent.resume.start`, and it defaults to false. The old name read as `resume.resume` and the old default ran the new session the moment it was created, so `/handoff` from an open-ended thread picked a next step on its own and began. You land in front of the composer instead, with its model and agent pickers, and the first move is yours. Set `start` true to hand work to a session that begins without you.
+
+  `intent.stated` tells a goal a person named apart from one the plugin read off the session. `/handoff` with no text sets it false, and the brief then says nobody named the next step and tells the new session to summarize and ask. A guess phrased as an instruction is how a handoff ends up doing work nobody asked for.
+
+### Patch Changes
+
+- [#18](https://github.com/hadronomy/skills/pull/18) [`3c2b5e4`](https://github.com/hadronomy/skills/commit/3c2b5e4879ae0b3bdcb55e2a58af9283f67d0367) Thanks [@hadronomy](https://github.com/hadronomy)! - The brief asks for prose. The summarizer prompt listed the four things to cover as bullets, and a small model answered by filling those bullets back as a JSON object, which landed in the brief as a shape with no handover in it. The prompt now bans JSON, headings, bullets, and labels outright, and asks for four to eight sentences. A summary that still comes back starting with `{` or `[` is refused, and the brief carries the transcript instead.
+
 ## 0.6.1
 
 ### Patch Changes
