@@ -1,3 +1,4 @@
+import type { GenerateApi, GenerateTextInput } from "@opencode-ai/client/effect/api"
 import { it } from "@effect/vitest"
 import { Effect, Ref } from "effect"
 import { describe, expect } from "vitest"
@@ -9,12 +10,12 @@ import { Host } from "./host.js"
 const asked = (request: Partial<Host.CondenseRequest> = {}) =>
   Effect.gen(function* () {
     const sent = yield* Ref.make("")
-    const generate = {
-      text: (input: { prompt: string }) =>
+    const generate: GenerateApi<unknown> = {
+      text: (input: GenerateTextInput) =>
         Ref.set(sent, input.prompt).pipe(Effect.as({ text: "a handover" })),
     }
     const summarizer = yield* Host.Summarizer.pipe(
-      Effect.provide(Host.SummarizerLive(generate as never)),
+      Effect.provide(Host.SummarizerLive(generate)),
     )
     yield* summarizer.condense({
       transcript: "User: fix the parser",

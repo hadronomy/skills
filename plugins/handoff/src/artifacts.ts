@@ -3,7 +3,7 @@ import type { ArtifactRef } from "./rpc.js"
 // One concept: finding the artifacts a conversation named. The brief points at
 // work instead of retelling it, and a pointer is worth nothing unless it is
 // exact, so this module copies what the session wrote. A model asked for the
-// same list paraphrases a path or invents one; these functions cannot.
+// same list paraphrases a path or invents one. These functions cannot.
 //
 // Precision beats recall here. A brief that says "read these" and names a word
 // that only looks like a path costs the next agent a failed read, so every
@@ -137,7 +137,7 @@ export const mine = (said: ReadonlyArray<string>): ReadonlyArray<ArtifactRef> =>
  *
  * const refs = listed(stated, ["User: see docs/plan.md and src/x.ts"])
  *
- * refs.map((ref) => ref.kind) // => ["plan", "file"]
+ * refs.map((ref) => `${ref.kind} ${ref.ref}`) // => ["plan docs/plan.md", "file src/x.ts"]
  * ```
  *
  * @category combinators

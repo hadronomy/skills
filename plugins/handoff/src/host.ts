@@ -78,9 +78,11 @@ export const FileWriterLive: Layer.Layer<FileWriter> = Layer.succeed(FileWriter,
 })
 
 /**
- * What the summarizer needs to write one handover. The purpose travels with
- * the transcript because a handover written for no purpose covers everything
- * evenly, which is the same as covering nothing.
+ * What the summarizer needs to write one handover.
+ *
+ * The purpose travels with the transcript. A handover written for a stated
+ * goal carries what that work needs. One written for a guess stays even,
+ * rather than narrow onto a label nobody chose.
  *
  * @category models
  * @since 0.8.0
