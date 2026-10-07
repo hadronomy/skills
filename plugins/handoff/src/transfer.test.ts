@@ -10,6 +10,7 @@ import {
   TestStorage,
   TestSummarizer,
   testLayer,
+  userMsg,
   wireRoundTrip,
 } from "./test-support.js"
 import { Transfer } from "./transfer.js"
@@ -268,7 +269,9 @@ describe("transfer", () => {
       yield* handoff.transfer(input)
       const inputs = yield* session.syntheticInputs
       const injected = inputs[0]
-      expect(injected.text).toContain("Skills: review")
+      // Each label says what to do with the list under it.
+      expect(injected.text).toContain("Skills to invoke: review")
+      expect(injected.text).toContain("Artifacts, open these before you act:")
       expect(injected.text).toContain("- plan: docs/plan.md")
     }).pipe(Effect.provide(testLayer())))
 
@@ -336,6 +339,45 @@ describe("transfer", () => {
       const [transcript] = yield* summarizer.seen
       expect(transcript).toBe("User: hello\nUser: world")
     }).pipe(Effect.provide(testLayer())))
+
+  it.effect("gives the summarizer the purpose, so it writes for one job", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const summarizer = yield* TestSummarizer
+      yield* handoff.transfer(minimal("finish the CSV fix"))
+      const [request] = yield* summarizer.asked
+      expect(request?.goal).toBe("finish the CSV fix")
+      expect(request?.stated).toBe(true)
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("tells the summarizer when the purpose is a guess", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const summarizer = yield* TestSummarizer
+      const input = decode({
+        sessionID: "ses_abc",
+        intent: { goal: "Weekly review", stated: false, directive: "resume", refs: [] },
+      })
+      yield* handoff.transfer(input)
+      const [request] = yield* summarizer.asked
+      expect(request?.stated).toBe(false)
+    }).pipe(Effect.provide(testLayer())))
+
+  it.effect("hands the mined artifacts to both the brief and the summarizer", () =>
+    Effect.gen(function* () {
+      const handoff = yield* Transfer.Service
+      const session = yield* TestSession
+      const summarizer = yield* TestSummarizer
+      yield* handoff.transfer(minimal())
+      const [request] = yield* summarizer.asked
+      // The model is told what the brief already points at, so the handover
+      // names each one instead of retelling what it holds.
+      expect(request?.artifacts).toContain("src/parser.ts")
+      const [brief] = yield* session.syntheticInputs
+      expect(brief?.text).toContain("- file: src/parser.ts")
+    }).pipe(Effect.provide(testLayer(script({
+      messages: [userMsg("fix src/parser.ts please", "msg_1"), userMsg("done", "msg_2")],
+    })))))
 
   it.effect("condenses with the model the source session was using", () =>
     Effect.gen(function* () {

@@ -204,6 +204,7 @@ export const filesTestLayer = Layer.effectContext(
 export class TestSummarizer extends Context.Service<TestSummarizer, {
   readonly seen: Effect.Effect<ReadonlyArray<string>>
   readonly models: Effect.Effect<ReadonlyArray<unknown>>
+  readonly asked: Effect.Effect<ReadonlyArray<Host.CondenseRequest>>
 }>()("Handoff/TestSummarizer") {}
 
 export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean; json?: boolean } = {}) =>
@@ -211,18 +212,24 @@ export const makeSummarizerTest = (opts: { fail?: boolean; blank?: boolean; json
     Effect.gen(function* () {
       const seen = yield* Ref.make<Array<string>>([])
       const models = yield* Ref.make<Array<unknown>>([])
+      const asked = yield* Ref.make<Array<Host.CondenseRequest>>([])
       const summarizer = Host.Summarizer.of({
-        condense: (transcript, model) =>
+        condense: (request) =>
           Effect.gen(function* () {
-            yield* Ref.update(seen, (current) => [...current, transcript])
-            yield* Ref.update(models, (current) => [...current, model])
+            yield* Ref.update(seen, (current) => [...current, request.transcript])
+            yield* Ref.update(models, (current) => [...current, request.model])
+            yield* Ref.update(asked, (current) => [...current, request])
             if (opts.fail) return yield* Effect.die(new TransportFault({ message: "model" }))
             if (opts.blank) return ""
             if (opts.json) return '{"what_is_done": "things"}'
             return "CONDENSED"
           }),
       })
-      const probe = TestSummarizer.of({ seen: Ref.get(seen), models: Ref.get(models) })
+      const probe = TestSummarizer.of({
+        seen: Ref.get(seen),
+        models: Ref.get(models),
+        asked: Ref.get(asked),
+      })
       return Context.empty().pipe(
         Context.add(Host.Summarizer, summarizer),
         Context.add(TestSummarizer, probe),
